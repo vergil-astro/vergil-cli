@@ -1,0 +1,67 @@
+{
+  "name": "@vergil-astro/vergil-cli",
+  "version": "0.0.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "CLI toolkit for Vergil Astro theme — write, publish, and manage your blog",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "vg": "bin/vg"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint src/",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "vergil",
+    "astro",
+    "blog",
+    "cli",
+    "content-management",
+    "markdown",
+    "writing"
+  ],
+  "author": "Rosh <dogegotout@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.14.0"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^12.1.0",
+    "fs-extra": "^11.3.5",
+    "globby": "^14.1.0",
+    "gray-matter": "^4.0.3",
+    "inquirer": "^9.3.8",
+    "mustache": "^4.2.0",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^9.0.9",
+    "@types/mustache": "^4.2.6",
+    "@types/node": "^22.19.18",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vergil-astro/vergil-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vergil-astro/vergil-cli/issues"
+  },
+  "homepage": "https://github.com/vergil-astro/vergil-cli#readme"
+}
