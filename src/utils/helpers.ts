@@ -30,10 +30,10 @@ export function printBanner(): void {
   console.log(C.title(`
    ██╗   ██╗███████╗██████╗  ██████╗ ██╗██╗
    ██║   ██║██╔════╝██╔══██╗██╔════╝ ██║██║
-   ██║   ██║█████╗  ██║  ██║██║  ███╗██║██║
-   ╚██╗ ██╔╝██╔══╝  ██║  ██║██║   ██║██║██║
-    ╚████╔╝ ██║     ██████╔╝╚██████╔╝██║██║
-     ╚═══╝  ╚═╝     ╚═════╝  ╚═════╝ ╚═╝╚═╝
+   ██║   ██║█████╗  ██████╔╝██║  ███╗██║██║
+   ╚██╗ ██╔╝██╔══╝  ██╔══██╗██║   ██║██║██║
+    ╚████╔╝ ███████╗██║  ██║╚██████╔╝██║███████╗
+     ╚═══╝  ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝
     `));
   console.log(C.subtitle('    Vergil CLI · Write. Publish. Create.\n'));
 }
@@ -43,16 +43,22 @@ export function printHelp(): void {
 
   console.log(C.subtitle('Initialize:'));
   console.log('  ' + C.accent('vg init') + '                    Initialize Vergil in current directory');
-  console.log('  ' + C.accent('vg init --template <name>') + '   Use a specific theme\n');
+  console.log('  ' + C.accent('vg init --template <name>') + '   Clone from a specific GitHub repo (default: vergil-astro/vergil-astro-theme)\n');
 
   console.log(C.subtitle('Create Content:'));
   console.log('  ' + C.accent('vg new post') + ' "Title"        Create a blog post');
+  console.log('    ' + C.muted('--draft, --tags <list>, --series <name>, --cover <path>'));
   console.log('  ' + C.accent('vg new page') + ' "Title"        Create a standalone page');
   console.log('  ' + C.accent('vg new project') + ' "Title"     Create a project showcase');
+  console.log('    ' + C.muted('--description <text>, --website <url>, --repo <url>'));
   console.log('  ' + C.accent('vg new album') + ' "Title"      Create a photo album');
+  console.log('    ' + C.muted('--draft, --tags <list>, --theme <golden|seasons>, --cover <path>'));
   console.log('  ' + C.accent('vg new thought') + ' "Text"      Create a thought (card stream)');
+  console.log('    ' + C.muted('--tags <list>'));
   console.log('  ' + C.accent('vg new moment') + ' "Text"       Create a moment (timeline)');
-  console.log('  ' + C.accent('vg new doc') + ' "Title"         Create a documentation page\n');
+  console.log('    ' + C.muted('--tags <list>'));
+  console.log('  ' + C.accent('vg new doc') + ' "Title"         Create a documentation page');
+  console.log('    ' + C.muted('--draft, --tags <list>, --path <sub-dir>\n'));
 
   console.log(C.subtitle('Development:'));
   console.log('  ' + C.accent('vg serve') + '                   Start dev server');
@@ -67,6 +73,7 @@ export function printHelp(): void {
   console.log('  ' + C.accent('vg series') + '                  List all series and post counts');
   console.log('  ' + C.accent('vg series') + ' <name>           Show all posts in a series');
   console.log('  ' + C.accent('vg docs') + '                    List all documentation books');
+  console.log('  ' + C.accent('vg docs') + ' -d                  List all docs drafts');
   console.log('  ' + C.accent('vg docs') + ' <book>             Show a book as a chapter tree\n');
 
   console.log(C.subtitle('AI Tools:'));

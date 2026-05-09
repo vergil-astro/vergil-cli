@@ -114,9 +114,13 @@ vg series list                         # Same as `vg series` (alias)
 vg series show "技术专栏"               # Same as `vg series <name>` (alias)
 
 vg docs                                # List all documentation books
+vg docs -d                             # List all docs drafts
 vg docs guide                          # Show a book's chapter tree
+vg docs guide -d                       # Show only drafts in a book
 vg docs list                           # Same as `vg docs` (alias)
+vg docs list -d                        # Same as `vg docs -d` (alias)
 vg docs show guide                     # Same as `vg docs <book>` (alias)
+vg docs show guide -d                  # Same as `vg docs <book> -d` (alias)
 ```
 
 **What is a draft?** Files created with `--draft` are hidden from your site. Run `vg publish` to remove the draft flag and make them visible.

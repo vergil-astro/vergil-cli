@@ -1,4 +1,4 @@
-import { program } from 'commander';
+import { program, Command } from 'commander';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -53,6 +53,16 @@ program
   .option('--description <text>', 'Description (for projects)')
   .option('--theme <name>', 'Album theme: golden|seasons', 'golden')
   .option('-p, --path <path>', 'Sub-directory path (for docs)')
+  .addHelpText('after', `
+Options by type:
+  post      --draft, --tags, --series, --cover
+  page      (none)
+  project   --description, --website, --repo
+  album     --draft, --tags, --theme, --cover
+  thought   --tags
+  moment    --tags
+  doc       --draft, --tags, --path
+`)
   .action(newCommand);
 
 // -- Development --
@@ -112,20 +122,29 @@ seriesCmd
 const docsCmd = program
   .command('docs [book]')
   .description('Browse documentation books — `vg docs` lists, `vg docs <book>` shows one')
-  .action((book?: string) => {
-    if (!book) return docsListCommand();
-    return docsShowCommand(book);
+  .option('-d, --drafts', 'Show only drafts')
+  .action((book?: string, options?: ListOptions) => {
+    if (!book) return docsListCommand(options?.drafts);
+    return docsShowCommand(book, options?.drafts);
   });
 
 docsCmd
   .command('list')
   .description('List all books with chapter counts')
-  .action(docsListCommand);
+  .option('-d, --drafts', 'Show only drafts')
+  .action(function (this: Command) {
+    const parentOpts = this.parent?.opts() as ListOptions | undefined;
+    return docsListCommand(parentOpts?.drafts);
+  });
 
 docsCmd
   .command('show <book>')
   .description('Show a book as a chapter tree')
-  .action(docsShowCommand);
+  .option('-d, --drafts', 'Show only drafts')
+  .action(function (this: Command, book: string) {
+    const parentOpts = this.parent?.opts() as ListOptions | undefined;
+    return docsShowCommand(book, parentOpts?.drafts);
+  });
 
 // -- Skill --
 const skillCmd = program

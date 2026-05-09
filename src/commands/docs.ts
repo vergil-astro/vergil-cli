@@ -53,6 +53,43 @@ function readMetaTitle(bookDir: string): string | undefined {
   }
 }
 
+// ── Draft collection ────────────────────────────────────────────────────────
+
+interface DraftEntry {
+  title: string;
+  path: string;
+  book: string;
+  relpath: string;
+}
+
+function collectDraftsRecursive(dir: string, book: string, root: string, results: DraftEntry[]): void {
+  for (const entry of safeReadDir(dir)) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectDraftsRecursive(fullPath, book, root, results);
+    } else if (isCountableDoc(entry.name)) {
+      const meta = readDocMeta(fullPath);
+      if (meta.draft) {
+        results.push({
+          title: meta.title || entry.name.replace(/\.mdx?$/, ''),
+          path: fullPath,
+          book,
+          relpath: fullPath.replace(root + '/', ''),
+        });
+      }
+    }
+  }
+}
+
+function collectDrafts(docsDir: string, root: string): DraftEntry[] {
+  const drafts: DraftEntry[] = [];
+  for (const book of safeReadDir(docsDir).filter(e => e.isDirectory())) {
+    const bookPath = join(docsDir, book.name);
+    collectDraftsRecursive(bookPath, book.name, root, drafts);
+  }
+  return drafts;
+}
+
 // ── Book list (`vg docs` / `vg docs list`) ──────────────────────────────────
 
 interface BookInfo {
@@ -98,7 +135,7 @@ function listBooks(docsDir: string): BookInfo[] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export async function docsListCommand(): Promise<void> {
+export async function docsListCommand(draftsOnly?: boolean): Promise<void> {
   const root = getProjectRoot();
   if (!root) {
     console.log(C.error('✗ Not in a Vergil project.'));
@@ -106,6 +143,31 @@ export async function docsListCommand(): Promise<void> {
   }
 
   const docsDir = join(root, 'src', 'content', 'docs');
+
+  if (draftsOnly) {
+    const drafts = collectDrafts(docsDir, root);
+    if (drafts.length === 0) {
+      console.log(C.success('✓ No drafts found in docs'));
+      return;
+    }
+
+    console.log(C.accent('\nDocs Drafts\n'));
+    console.log(C.dim('─'.repeat(60)));
+
+    let currentBook = '';
+    for (const d of drafts) {
+      if (d.book !== currentBook) {
+        currentBook = d.book;
+        console.log(`\n  ${C.accent(currentBook)}`);
+      }
+      console.log(`    ${C.accent('▸')} ${link(C.text(d.title), d.path)}${C.warning(' [draft]')}`);
+      console.log(`      ${C.muted(d.relpath)}`);
+    }
+
+    console.log(C.muted(`\nTotal: ${drafts.length} draft${drafts.length > 1 ? 's' : ''}`));
+    return;
+  }
+
   const books = listBooks(docsDir);
 
   if (books.length === 0) {
@@ -242,7 +304,40 @@ function renderNode(node: DocLeaf | Category, prefix: string, isLast: boolean): 
   });
 }
 
-export async function docsShowCommand(bookName: string): Promise<void> {
+/** Filter a tree to keep only draft docs (and their ancestor categories). */
+function filterDraftTree(node: DocLeaf | Category): DocLeaf | Category | null {
+  if (node.type === 'doc') {
+    return node.draft ? node : null;
+  }
+
+  const filteredChildren: Array<DocLeaf | Category> = [];
+  for (const child of node.children) {
+    const filtered = filterDraftTree(child);
+    if (filtered) {
+      filteredChildren.push(filtered);
+    }
+  }
+
+  if (filteredChildren.length === 0) {
+    return null;
+  }
+
+  let docCount = 0;
+  let draftCount = 0;
+  for (const child of filteredChildren) {
+    if (child.type === 'doc') {
+      docCount++;
+      if (child.draft) draftCount++;
+    } else {
+      docCount += child.docCount;
+      draftCount += child.draftCount;
+    }
+  }
+
+  return { type: 'category', name: node.name, docCount, draftCount, children: filteredChildren };
+}
+
+export async function docsShowCommand(bookName: string, draftsOnly?: boolean): Promise<void> {
   const root = getProjectRoot();
   if (!root) {
     console.log(C.error('✗ Not in a Vergil project.'));
@@ -264,22 +359,32 @@ export async function docsShowCommand(bookName: string): Promise<void> {
   const tree = buildCategory(bookDir, bookName);
   const metaTitle = readMetaTitle(bookDir);
 
-  const draftSuffix = tree.draftCount > 0
-    ? `, ${tree.draftCount} draft${tree.draftCount > 1 ? 's' : ''}`
+  let displayTree: Category = tree;
+  if (draftsOnly) {
+    const filtered = filterDraftTree(tree);
+    if (!filtered) {
+      console.log(C.success(`✓ No drafts in ${bookName}`));
+      return;
+    }
+    displayTree = filtered as Category;
+  }
+
+  const draftSuffix = displayTree.draftCount > 0
+    ? `, ${displayTree.draftCount} draft${displayTree.draftCount > 1 ? 's' : ''}`
     : '';
-  const summary = `(${tree.docCount} doc${tree.docCount !== 1 ? 's' : ''}${draftSuffix})`;
+  const summary = `(${displayTree.docCount} doc${displayTree.docCount !== 1 ? 's' : ''}${draftSuffix})`;
   const titlePart = metaTitle ? `  ${C.muted(metaTitle)}` : '';
 
   console.log(`\n${C.accent(bookName)}  ${C.muted(summary)}${titlePart}`);
   console.log(C.dim('─'.repeat(60)));
 
-  if (tree.children.length === 0) {
+  if (displayTree.children.length === 0) {
     console.log(C.muted('  (empty)'));
     return;
   }
 
-  tree.children.forEach((child, i) => {
-    renderNode(child, '  ', i === tree.children.length - 1);
+  displayTree.children.forEach((child, i) => {
+    renderNode(child, '  ', i === displayTree.children.length - 1);
   });
 
   console.log();
