@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync, existsSync, type Dirent } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
-import { C } from '../utils/helpers.js';
+import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -142,6 +142,7 @@ interface DocLeaf {
   type: 'doc';
   title: string;
   draft: boolean;
+  path: string;
 }
 
 interface Category {
@@ -183,11 +184,13 @@ function buildCategory(dir: string, name: string): Category {
 
     if (!hasSubDirs && indexFile && otherDocs.length === 0) {
       // Leaf doc: collapse `<dir>/index.md` to a single titled entry.
-      const meta = readDocMeta(join(subPath, indexFile.name));
+      const indexPath = join(subPath, indexFile.name);
+      const meta = readDocMeta(indexPath);
       children.push({
         type: 'doc',
         title: meta.title || subDir.name,
         draft: !!meta.draft,
+        path: indexPath,
       });
     } else {
       children.push(buildCategory(subPath, subDir.name));
@@ -196,11 +199,13 @@ function buildCategory(dir: string, name: string): Category {
 
   // Loose `.md` files at this level (e.g. README.md): each is a leaf doc.
   for (const mdFile of mdFiles.sort((a, b) => a.name.localeCompare(b.name))) {
-    const meta = readDocMeta(join(dir, mdFile.name));
+    const filePath = join(dir, mdFile.name);
+    const meta = readDocMeta(filePath);
     children.push({
       type: 'doc',
       title: meta.title || mdFile.name.replace(/\.mdx?$/, ''),
       draft: !!meta.draft,
+      path: filePath,
     });
   }
 
@@ -224,7 +229,7 @@ function renderNode(node: DocLeaf | Category, prefix: string, isLast: boolean): 
 
   if (node.type === 'doc') {
     const draft = node.draft ? C.warning(' [draft]') : '';
-    console.log(`${prefix}${C.dim(branch)}${C.text(node.title)}${draft}`);
+    console.log(`${prefix}${C.dim(branch)}${link(C.text(node.title), node.path)}${draft}`);
     return;
   }
 

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
-import { C } from '../utils/helpers.js';
+import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 
 function listBlogFiles(dir: string): string[] {
@@ -30,7 +30,7 @@ function dirExists(p: string): boolean {
 
 interface SeriesInfo {
   name: string;
-  posts: Array<{ title: string; path: string; draft: boolean }>;
+  posts: Array<{ title: string; path: string; absPath: string; draft: boolean }>;
 }
 
 function collectSeries(root: string): Map<string, SeriesInfo> {
@@ -52,6 +52,7 @@ function collectSeries(root: string): Map<string, SeriesInfo> {
       seriesMap.get(seriesName)!.posts.push({
         title: String(data.title || 'Untitled'),
         path: filePath.replace(root + '/', ''),
+        absPath: filePath,
         draft: data.draft === true,
       });
     } catch {
@@ -115,7 +116,7 @@ export async function seriesShowCommand(seriesName: string): Promise<void> {
 
   for (const post of series.posts) {
     const draft = post.draft ? C.warning(' [draft]') : '';
-    console.log(`  ${C.accent('▸')} ${C.text(post.title)}${draft}`);
+    console.log(`  ${C.accent('▸')} ${link(C.text(post.title), post.absPath)}${draft}`);
     console.log(`    ${C.muted(post.path)}`);
   }
 }

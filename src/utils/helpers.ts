@@ -13,6 +13,19 @@ export const C = {
   dim: chalk.hex('#3d3835'),
 };
 
+/**
+ * Wrap text in an OSC 8 terminal hyperlink so the user can click (or
+ * Cmd/Ctrl+click) to open the file in the system default app.
+ * Terminals without OSC 8 support fall through to plain text.
+ */
+export function link(text: string, absPath: string): string {
+  const distro = process.env.WSL_DISTRO_NAME;
+  const url = distro && absPath.startsWith('/')
+    ? `file://wsl.localhost/${distro}${absPath}`
+    : `file://${absPath}`;
+  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
+
 export function printBanner(): void {
   console.log(C.title(`
    ██╗   ██╗███████╗██████╗  ██████╗ ██╗██╗

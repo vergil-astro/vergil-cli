@@ -1,7 +1,7 @@
 import { readdirSync, statSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
 import type { ListOptions } from '../types.js';
-import { C } from '../utils/helpers.js';
+import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { readFrontmatter } from '../utils/frontmatter.js';
 
@@ -175,7 +175,7 @@ function printDetail(root: string, type: string, draftsOnly: boolean): void {
       : '';
     const pathLabel = f.relpath.includes('/') ? C.muted(` (${f.relpath})`) : '';
 
-    console.log(`  ${C.accent('▸')} ${C.text(title)}${draftTag}${tags}${pathLabel}`);
+    console.log(`  ${C.accent('▸')} ${link(C.text(title), f.path)}${draftTag}${tags}${pathLabel}`);
     if (!pathLabel && date) {
       console.log(`    ${C.muted(date)} ${C.muted(f.name)}`);
     }
