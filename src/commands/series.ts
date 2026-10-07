@@ -1,63 +1,56 @@
-import { readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'fs';
+import { join, relative } from 'path';
 import matter from 'gray-matter';
 import { C, link } from '../utils/helpers.js';
-import { getProjectRoot } from '../utils/file.js';
-
-function listBlogFiles(dir: string): string[] {
-  const results: string[] = [];
-  if (!dirExists(dir)) return results;
-  const entries = readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...listBlogFiles(fullPath));
-    } else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) {
-      results.push(fullPath);
-    }
-  }
-  return results;
-}
-
-function dirExists(p: string): boolean {
-  try {
-    readdirSync(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { getProjectRoot, listMarkdownFiles } from '../utils/file.js';
+import { loadSeriesDefs, findSeriesDef, resolvePostSeries } from '../utils/series.js';
 
 interface SeriesInfo {
+  id: string;
   name: string;
-  posts: Array<{ title: string; path: string; absPath: string; draft: boolean }>;
+  dir?: string;
+  posts: Array<{ title: string; path: string; absPath: string; draft: boolean; date: number }>;
 }
 
+/**
+ * Group blog posts by series. Series defined in src/content/series/ are listed
+ * even when empty; a post can join one through `series:` or by sitting in the
+ * folder the series claims with `dir`.
+ */
 function collectSeries(root: string): Map<string, SeriesInfo> {
   const blogDir = join(root, 'src', 'content', 'blog');
-  const files = listBlogFiles(blogDir);
+  const defs = loadSeriesDefs(root);
   const seriesMap = new Map<string, SeriesInfo>();
 
-  for (const filePath of files) {
-    try {
-      const content = readFileSync(filePath, 'utf8');
-      const { data } = matter(content);
-      const seriesName = data.series;
-      if (!seriesName || typeof seriesName !== 'string') continue;
+  for (const def of defs) {
+    seriesMap.set(def.id, { ...def, posts: [] });
+  }
 
-      if (!seriesMap.has(seriesName)) {
-        seriesMap.set(seriesName, { name: seriesName, posts: [] });
+  for (const filePath of listMarkdownFiles(blogDir)) {
+    try {
+      const { data } = matter(readFileSync(filePath, 'utf8'));
+      const series = resolvePostSeries(data.series, relative(blogDir, filePath), defs);
+      if (!series) continue;
+
+      if (!seriesMap.has(series.id)) {
+        seriesMap.set(series.id, { ...series, posts: [] });
       }
 
-      seriesMap.get(seriesName)!.posts.push({
+      seriesMap.get(series.id)!.posts.push({
         title: String(data.title || 'Untitled'),
         path: filePath.replace(root + '/', ''),
         absPath: filePath,
         draft: data.draft === true,
+        date: new Date(data.publishDate).getTime() || 0,
       });
     } catch {
       // skip unreadable files
     }
+  }
+
+  // A series is a reading order, so oldest first — same as the theme
+  for (const s of seriesMap.values()) {
+    s.posts.sort((a, b) => a.date - b.date);
   }
 
   return seriesMap;
@@ -88,7 +81,8 @@ export async function seriesListCommand(): Promise<void> {
   for (const s of sorted) {
     const draftCount = s.posts.filter(p => p.draft).length;
     const draftLabel = draftCount > 0 ? C.warning(` (${draftCount} draft)`) : '';
-    console.log(`  ${C.accent(s.name.padEnd(20))} ${C.text(String(s.posts.length))} posts${draftLabel}`);
+    const dirLabel = s.dir ? C.muted(`  blog/${s.dir}/`) : '';
+    console.log(`  ${C.accent(s.name.padEnd(20))} ${C.text(String(s.posts.length))} posts${draftLabel}${dirLabel}`);
   }
 }
 
@@ -100,11 +94,12 @@ export async function seriesShowCommand(seriesName: string): Promise<void> {
   }
 
   const seriesMap = collectSeries(root);
-  const series = seriesMap.get(seriesName);
+  const match = findSeriesDef(Array.from(seriesMap.values()), seriesName);
+  const series = match && seriesMap.get(match.id);
 
   if (!series) {
     console.log(C.error(`✗ Series not found: ${seriesName}`));
-    const available = Array.from(seriesMap.keys());
+    const available = Array.from(seriesMap.values()).map(s => s.name);
     if (available.length > 0) {
       console.log(C.muted(`Available: ${available.join(', ')}`));
     }

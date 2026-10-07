@@ -16,6 +16,14 @@ export function readFrontmatter(filePath: string): ContentMeta | null {
 }
 
 /**
+ * YAML single-quoted scalar. A quote inside is escaped by doubling it;
+ * a backslash escape is not valid YAML and breaks the whole frontmatter.
+ */
+function quote(value: unknown): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
  * Generate frontmatter YAML string
  */
 export function generateFrontmatter(meta: Record<string, unknown>): string {
@@ -33,7 +41,7 @@ export function generateFrontmatter(meta: Record<string, unknown>): string {
           if (typeof item === 'object') {
             lines.push(`  - ${JSON.stringify(item).replace(/"/g, "'")}`);
           } else {
-            lines.push(`  - ${item}`);
+            lines.push(`  - ${quote(item)}`);
           }
         });
       }
@@ -47,7 +55,7 @@ export function generateFrontmatter(meta: Record<string, unknown>): string {
         lines.push(`  ${k}: ${v}`);
       }
     } else {
-      lines.push(`${key}: '${String(value).replace(/'/g, "\\'")}'`);
+      lines.push(`${key}: ${quote(value)}`);
     }
   }
 

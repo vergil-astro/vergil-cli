@@ -50,15 +50,15 @@ export function printHelp(): void {
   console.log('    ' + C.muted('--draft, --tags <list>, --series <name>, --cover <path>'));
   console.log('  ' + C.accent('vg new page') + ' "Title"        Create a standalone page');
   console.log('  ' + C.accent('vg new project') + ' "Title"     Create a project showcase');
-  console.log('    ' + C.muted('--description <text>, --website <url>, --repo <url>'));
+  console.log('    ' + C.muted('--description <text>, --website <url>, --repo <owner/repo>'));
   console.log('  ' + C.accent('vg new album') + ' "Title"      Create a photo album');
-  console.log('    ' + C.muted('--draft, --tags <list>, --theme <golden|seasons>, --cover <path>'));
+  console.log('    ' + C.muted('--tags <list>, --theme <golden|seasons>, --cover <path>'));
   console.log('  ' + C.accent('vg new thought') + ' "Text"      Create a thought (card stream)');
   console.log('    ' + C.muted('--tags <list>'));
   console.log('  ' + C.accent('vg new moment') + ' "Text"       Create a moment (timeline)');
   console.log('    ' + C.muted('--tags <list>'));
-  console.log('  ' + C.accent('vg new doc') + ' "Title"         Create a documentation page');
-  console.log('    ' + C.muted('--draft, --tags <list>, --path <sub-dir>\n'));
+  console.log('  ' + C.accent('vg new doc') + ' "Title"         Create a doc, or a new book without --path');
+  console.log('    ' + C.muted('--draft, --tags <list>, --path <book>[/<chapter>]\n'));
 
   console.log(C.subtitle('Development:'));
   console.log('  ' + C.accent('vg serve') + '                   Start dev server');

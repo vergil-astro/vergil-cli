@@ -49,19 +49,19 @@ program
   .option('-c, --cover <path>', 'Cover image path')
   .option('-s, --series <name>', 'Series name (for posts)')
   .option('-w, --website <url>', 'Project website URL')
-  .option('-r, --repo <url>', 'GitHub repo URL')
+  .option('-r, --repo <repo>', 'GitHub repo, owner/repo or URL (for projects)')
   .option('--description <text>', 'Description (for projects)')
   .option('--theme <name>', 'Album theme: golden|seasons', 'golden')
-  .option('-p, --path <path>', 'Sub-directory path (for docs)')
+  .option('-p, --path <path>', 'Folder for docs: <book> or <book>/<chapter>')
   .addHelpText('after', `
 Options by type:
   post      --draft, --tags, --series, --cover
   page      (none)
   project   --description, --website, --repo
-  album     --draft, --tags, --theme, --cover
+  album     --tags, --theme, --cover
   thought   --tags
   moment    --tags
-  doc       --draft, --tags, --path
+  doc       --draft, --tags, --path (omit --path to start a new book)
 `)
   .action(newCommand);
 

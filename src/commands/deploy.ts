@@ -26,7 +26,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   // Always build first
   console.log(C.accent('Building for production...'));
   try {
-    execSync(`${pm} astro build`, { cwd: root, stdio: 'inherit' });
+    execSync(`${pm} run build`, { cwd: root, stdio: 'inherit' });
   } catch {
     console.log(C.error('✗ Build failed, aborting deploy'));
     return;

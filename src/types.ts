@@ -47,7 +47,9 @@ export interface ListOptions {
 // ── Directive ──
 export interface DirectiveInfo {
   name: string;
-  type: 'block' | 'inline' | 'code';
+  /** Category as grouped in the theme docs (内容指令) */
+  category: string;
+  type: 'block' | 'leaf' | 'inline' | 'code';
   description: string;
   example: string;
 }
