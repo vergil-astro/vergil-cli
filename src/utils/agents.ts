@@ -145,7 +145,7 @@ export function listAgentIds(): string[] {
 // ─── Remote Fetch ───────────────────────────────────────────────────────────
 
 const GITHUB_RAW = 'https://raw.githubusercontent.com/vergil-astro/vergil-writing-skills/main/SKILL.md';
-const NPM_REGISTRY = 'https://registry.npmjs.org/vergil-writing-skills/latest';
+const NPM_REGISTRY = 'https://registry.npmjs.org/@vergil-astro/vergil-writing-skills/latest';
 
 async function fetchFromURL(url: string): Promise<string | null> {
   try {

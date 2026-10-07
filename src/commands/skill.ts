@@ -83,7 +83,8 @@ export async function skillInstallCommand(options: InstallOptions): Promise<void
 
   if (successCount > 0) {
     console.log(C.success(`✓ Installed on ${successCount}/${results.length} agent(s)`));
-    console.log(C.muted('  Try asking your agent: "Enhance this article with Vergil directives"'));
+    console.log(C.muted('  Try asking your agent: "帮我排版一下这篇文章" or "Enhance this article with Vergil directives"'));
+    console.log(C.muted('  The skill follows kami\'s writing rules; install kami too for the full reference: https://github.com/tw93/kami#install'));
   } else {
     console.log(C.error('✗ Install failed for all agents'));
     process.exit(1);

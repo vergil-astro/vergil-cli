@@ -22,7 +22,8 @@ export async function buildCommand(): Promise<void> {
   console.log(C.accent('Building for production...'));
 
   try {
-    execSync(`${pm} astro build`, {
+    // The theme's build script tidies images before `astro build`
+    execSync(`${pm} run build`, {
       cwd: root,
       stdio: 'inherit',
       shell: true,

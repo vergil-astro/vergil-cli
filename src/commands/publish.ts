@@ -4,7 +4,6 @@ import { join } from 'path';
 import readline from 'readline';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
-import { generateFrontmatter } from '../utils/frontmatter.js';
 
 interface DraftEntry {
   title: string;
@@ -92,20 +91,30 @@ async function interactivePublish(root: string): Promise<void> {
   await publishFile(drafts[num - 1].path, root);
 }
 
+/**
+ * Flip `draft: true` to `false` in place. Re-serializing the whole frontmatter
+ * would turn dates into long Date strings and mangle nested fields such as
+ * seo, splash or an album's images list.
+ */
 async function publishFile(filePath: string, root: string): Promise<void> {
   const content = readFileSync(filePath, 'utf8');
-  const { data, content: body } = matter(content);
+  const { data } = matter(content);
 
   if (!data.draft) {
     console.log(C.warning('⚠ This content is already published'));
     return;
   }
 
-  data.draft = false;
+  const fmEnd = content.indexOf('\n---', 3);
+  const frontmatter = content.slice(0, fmEnd);
+  const updated = frontmatter.replace(/^draft:\s*(true|yes|on)\s*$/m, 'draft: false');
 
-  const fm = generateFrontmatter(data);
-  const newContent = body.trim() ? `${fm}\n\n${body.trim()}\n` : `${fm}\n`;
-  writeFileSync(filePath, newContent);
+  if (updated === frontmatter) {
+    console.log(C.error('✗ Could not find the draft flag in frontmatter'));
+    return;
+  }
+
+  writeFileSync(filePath, updated + content.slice(fmEnd));
 
   console.log(C.success(`✓ Published: ${C.accent(filePath.replace(root + '/', ''))}`));
 }
@@ -128,9 +137,10 @@ export async function publishCommand(slug?: string): Promise<void> {
     const dir = join(root, 'src', 'content', type);
     const drafts = findDraftsRecursive(dir, type, root);
     const match = drafts.find(d => {
-      const baseName = d.relpath.split('/').pop() || '';
-      const fileSlug = baseName.replace(/^\d{4}-\d{2}-\d{2}--/, '').replace(/-\d+\.md$/, '');
-      return fileSlug === slug || d.relpath.includes(slug);
+      const name = (d.relpath.split('/').pop() || '').replace(/\.mdx?$/, '');
+      // Older vg versions named files <date>--<slug>-<n>.md
+      const legacySlug = name.replace(/^\d{4}-\d{2}-\d{2}--/, '').replace(/-\d+$/, '');
+      return name === slug || legacySlug === slug || d.relpath.includes(slug);
     });
     if (match) {
       await publishFile(match.path, root);

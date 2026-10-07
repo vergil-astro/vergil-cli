@@ -84,6 +84,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
 function printNextSteps(): void {
   console.log(`\n${C.subtitle('Next steps:')}`);
+  console.log(`  ${C.accent('pnpm reset')}             ${C.muted('← clear the demo content (pnpm reset:dry to preview)')}`);
   console.log(`  ${C.accent('vg new post')} "Hello"     ${C.muted('← write your first post')}`);
   console.log(`  ${C.accent('vg serve')}               ${C.muted('← start dev server')}`);
 }

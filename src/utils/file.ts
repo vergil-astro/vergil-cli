@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'path';
 export function isVergilProject(dir: string = process.cwd()): boolean {
   return existsSync(join(dir, 'astro.config.mjs')) ||
     existsSync(join(dir, 'astro.config.ts')) ||
-    existsSync(join(dir, 'src', 'data', 'site-config.ts'));
+    existsSync(join(dir, 'src', 'data', 'config'));
 }
 
 /**
@@ -35,15 +35,38 @@ export function ensureDir(dir: string): void {
 }
 
 /**
- * Generate a URL-friendly slug from title
+ * Generate a URL-friendly slug from title.
+ * Mirrors the theme's slugify (src/utils/common-utils.ts): CJK characters are
+ * kept, so Chinese titles get Chinese filenames instead of an empty slug.
  */
 export function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
+    .trim()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^一-龥぀-ヿa-z0-9\s-]/g, ' ')
+    .trim()
+    .replace(/[\s-]+/g, '-')
     .substring(0, 80)
     .replace(/-+$/, '');
+}
+
+/**
+ * Collect every Markdown file under a directory, recursively
+ */
+export function listMarkdownFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const results: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...listMarkdownFiles(fullPath));
+    } else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
 }
 
 /**
