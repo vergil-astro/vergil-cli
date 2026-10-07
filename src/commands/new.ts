@@ -1,4 +1,5 @@
-import { writeFileSync, existsSync } from 'fs';
+import { writeFileSync, existsSync, readFileSync } from 'fs';
+import matter from 'gray-matter';
 import { basename, dirname, isAbsolute, join } from 'path';
 import { formatDate, ensureDir, getProjectRoot, getNextIndex, slugify, listMarkdownFiles } from '../utils/file.js';
 import { generateFrontmatter } from '../utils/frontmatter.js';
@@ -80,6 +81,34 @@ function projectLinks(options: NewOptions): string | null {
 }
 
 /**
+ * Folder paths a book registers in _meta.md `dirs`, walked the same way as the
+ * theme's flattenDirs. Docs in folders missing from this list stay out of the sidebar.
+ */
+function registeredDirs(metaPath: string): string[] {
+  const result: string[] = [];
+  const walk = (items: unknown, parent: string): void => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (typeof item === 'string') {
+        result.push(parent ? `${parent}/${item}` : item);
+      } else if (item && typeof item === 'object') {
+        for (const [key, children] of Object.entries(item)) {
+          const path = parent ? `${parent}/${key}` : key;
+          result.push(path);
+          walk(children, path);
+        }
+      }
+    }
+  };
+  try {
+    walk(matter(readFileSync(metaPath, 'utf8')).data.dirs, '');
+  } catch {
+    // unreadable _meta.md: treat as no dirs
+  }
+  return result.map(p => p.toLowerCase());
+}
+
+/**
  * Docs live in books: src/content/docs/<book>/ with a _meta.md.
  * `--path` is the folder the new doc goes in (`<book>` or `<book>/<chapter>`);
  * without it the title starts a new book and becomes its first doc.
@@ -120,6 +149,12 @@ function createDoc(root: string, contentDir: string, title: string, slug: string
   console.log(C.success(`✓ doc created: ${C.accent(filepath.replace(root + '/', ''))}`));
   if (options.draft) {
     console.log(C.muted('  Status: draft'));
+  }
+
+  const chapter = segments.slice(1).join('/');
+  if (chapter && !registeredDirs(metaPath).includes(chapter.toLowerCase())) {
+    console.log(C.warning(`⚠ "${chapter}" is not listed in dirs of ${metaPath.replace(root + '/', '')}`));
+    console.log(C.muted('  The theme only shows docs from folders listed there; add it to make this doc appear in the sidebar.'));
   }
 }
 

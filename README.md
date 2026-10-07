@@ -91,7 +91,7 @@ vg new doc "Config" --path my-guide/advanced
 
 **Doc:**
 - `-d, --draft` — Create as a draft
-- `-p, --path <path>` — The folder to put the doc in: a book (`my-guide`) or a chapter inside it (`my-guide/advanced`). The book's `_meta.md` is created if it doesn't exist yet. Without `--path`, the title starts a new book and becomes its first page
+- `-p, --path <path>` — The folder to put the doc in: a book (`my-guide`) or a chapter inside it (`my-guide/advanced`). The book's `_meta.md` is created if it doesn't exist yet. A chapter folder has to be listed under `dirs` in `_meta.md` before the theme shows its docs in the sidebar; `vg` warns when it isn't. Without `--path`, the title starts a new book and becomes its first page
 
 ### Development
 
