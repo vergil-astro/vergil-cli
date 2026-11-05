@@ -4,6 +4,7 @@ import { join } from 'path';
 import readline from 'readline';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { canPrompt, fail, warn, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
 
 interface DraftEntry {
   title: string;
@@ -70,6 +71,15 @@ async function interactivePublish(root: string): Promise<void> {
     return;
   }
 
+  // Picking from a list needs a person at the terminal; agents and scripts pass the slug
+  if (!canPrompt) {
+    return fail(
+      'No draft given',
+      'Pass the one to publish: vg publish <slug>',
+      ...drafts.map(d => `${(d.relpath.split('/').pop() || '').replace(/\.mdx?$/, '')}  (${d.relpath})`),
+    );
+  }
+
   console.log(C.accent('\nDrafts\n'));
   console.log(C.dim('─'.repeat(60)));
 
@@ -101,7 +111,8 @@ async function publishFile(filePath: string, root: string): Promise<void> {
   const { data } = matter(content);
 
   if (!data.draft) {
-    console.log(C.warning('⚠ This content is already published'));
+    // Already in the state asked for, so not a failure
+    warn('This content is already published');
     return;
   }
 
@@ -110,21 +121,17 @@ async function publishFile(filePath: string, root: string): Promise<void> {
   const updated = frontmatter.replace(/^draft:\s*(true|yes|on)\s*$/m, 'draft: false');
 
   if (updated === frontmatter) {
-    console.log(C.error('✗ Could not find the draft flag in frontmatter'));
-    return;
+    return fail('Could not find the draft flag in frontmatter', sitePath(root, filePath));
   }
 
   writeFileSync(filePath, updated + content.slice(fmEnd));
 
-  console.log(C.success(`✓ Published: ${C.accent(filePath.replace(root + '/', ''))}`));
+  console.log(C.success(`✓ Published: ${C.accent(sitePath(root, filePath))}`));
 }
 
 export async function publishCommand(slug?: string): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   if (!slug) {
     await interactivePublish(root);
@@ -148,6 +155,5 @@ export async function publishCommand(slug?: string): Promise<void> {
     }
   }
 
-  console.log(C.error(`✗ No draft found matching: ${slug}`));
-  console.log(C.muted('  Run `vg publish` without arguments to see all drafts'));
+  fail(`No draft found matching: ${slug}`, 'See all drafts with `vg list -d` and `vg docs -d` (add --json for machine-readable output)');
 }

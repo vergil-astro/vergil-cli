@@ -3,6 +3,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -135,17 +136,17 @@ function listBooks(docsDir: string): BookInfo[] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export async function docsListCommand(draftsOnly?: boolean): Promise<void> {
+export async function docsListCommand(draftsOnly?: boolean, json?: boolean): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const docsDir = join(root, 'src', 'content', 'docs');
 
   if (draftsOnly) {
     const drafts = collectDrafts(docsDir, root);
+    if (json) {
+      return printJson({ drafts: drafts.map(d => ({ book: d.book, title: d.title, path: sitePath(root, d.path) })) });
+    }
     if (drafts.length === 0) {
       console.log(C.success('✓ No drafts found in docs'));
       return;
@@ -169,6 +170,14 @@ export async function docsListCommand(draftsOnly?: boolean): Promise<void> {
   }
 
   const books = listBooks(docsDir);
+
+  if (json) {
+    return printJson({
+      books: books.map(b => ({ id: b.id, title: b.title ?? null, path: sitePath(root, b.path), docs: b.docCount, drafts: b.draftCount })),
+      totalDocs: books.reduce((sum, b) => sum + b.docCount, 0),
+      totalDrafts: books.reduce((sum, b) => sum + b.draftCount, 0),
+    });
+  }
 
   if (books.length === 0) {
     console.log(C.muted('No docs found in src/content/docs/.'));
@@ -337,23 +346,32 @@ function filterDraftTree(node: DocLeaf | Category): DocLeaf | Category | null {
   return { type: 'category', name: node.name, docCount, draftCount, children: filteredChildren };
 }
 
-export async function docsShowCommand(bookName: string, draftsOnly?: boolean): Promise<void> {
-  const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
+/** A tree node for --json: paths relative to the site root */
+function nodeJson(root: string, node: DocLeaf | Category): unknown {
+  if (node.type === 'doc') {
+    return { type: 'doc', title: node.title, path: sitePath(root, node.path), draft: node.draft };
   }
+  return {
+    type: 'category',
+    name: node.name,
+    docs: node.docCount,
+    drafts: node.draftCount,
+    children: node.children.map(child => nodeJson(root, child)),
+  };
+}
+
+export async function docsShowCommand(bookName: string, draftsOnly?: boolean, json?: boolean): Promise<void> {
+  const root = getProjectRoot();
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const docsDir = join(root, 'src', 'content', 'docs');
   const bookDir = join(docsDir, bookName);
 
-  if (!dirExists(bookDir)) {
-    console.log(C.error(`✗ Book not found: ${bookName}`));
+  // A book is a single folder name under src/content/docs/
+  const isBookName = bookName !== '.' && bookName !== '..' && !/[\\/]/.test(bookName);
+  if (!isBookName || !dirExists(bookDir)) {
     const books = listBooks(docsDir);
-    if (books.length > 0) {
-      console.log(C.muted(`Available: ${books.map(b => b.id).join(', ')}`));
-    }
-    return;
+    return fail(`Book not found: ${bookName}`, ...(books.length > 0 ? [`Available: ${books.map(b => b.id).join(', ')}`] : []));
   }
 
   const tree = buildCategory(bookDir, bookName);
@@ -361,12 +379,23 @@ export async function docsShowCommand(bookName: string, draftsOnly?: boolean): P
 
   let displayTree: Category = tree;
   if (draftsOnly) {
-    const filtered = filterDraftTree(tree);
-    if (!filtered) {
+    const filtered = filterDraftTree(tree) as Category | null;
+    if (!filtered && !json) {
       console.log(C.success(`✓ No drafts in ${bookName}`));
       return;
     }
-    displayTree = filtered as Category;
+    displayTree = filtered ?? { type: 'category', name: bookName, docCount: 0, draftCount: 0, children: [] };
+  }
+
+  if (json) {
+    return printJson({
+      book: bookName,
+      title: metaTitle ?? null,
+      draftsOnly: !!draftsOnly,
+      docs: displayTree.docCount,
+      drafts: displayTree.draftCount,
+      children: displayTree.children.map(child => nodeJson(root, child)),
+    });
   }
 
   const draftSuffix = displayTree.draftCount > 0

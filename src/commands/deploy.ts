@@ -4,6 +4,19 @@ import { join } from 'path';
 import type { DeployOptions } from '../types.js';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
+
+const TARGETS = ['github', 'vercel', 'netlify'];
+
+/** Is a command on PATH */
+function hasCommand(name: string): boolean {
+  try {
+    execSync(`which ${name}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function detectPackageManager(root: string): string {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
@@ -14,12 +27,10 @@ function detectPackageManager(root: string): string {
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const target = options.target || 'github';
+  if (!TARGETS.includes(target)) return fail(`Unknown deploy target: ${target}`, `Available: ${TARGETS.join(', ')}`);
   const pkgPath = join(root, 'package.json');
   const pm = detectPackageManager(root);
 
@@ -28,17 +39,14 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   try {
     execSync(`${pm} run build`, { cwd: root, stdio: 'inherit' });
   } catch {
-    console.log(C.error('✗ Build failed, aborting deploy'));
-    return;
+    return fail('Build failed, aborting deploy', 'The build output above has the details.');
   }
 
   if (target === 'github') {
     try {
       execSync('git remote get-url origin', { cwd: root, stdio: 'ignore' });
     } catch {
-      console.log(C.error('✗ No git remote configured'));
-      console.log(C.muted('  Run: git remote add origin https://github.com/username/repo.git'));
-      return;
+      return fail('No git remote configured', 'Run: git remote add origin https://github.com/username/repo.git');
     }
 
     // Install gh-pages if needed
@@ -63,25 +71,23 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       execSync(`${pm} run deploy`, { cwd: root, stdio: 'inherit' });
       console.log(C.success('✓ Deployed to GitHub Pages'));
     } catch {
-      console.log(C.error('✗ Deploy failed'));
+      fail('Deploy failed', 'The output above has the details.');
     }
 
   } else if (target === 'vercel') {
+    if (!hasCommand('vercel')) return fail('Vercel CLI not installed', 'Run: npm i -g vercel');
     try {
-      execSync('which vercel', { stdio: 'ignore' });
       execSync('vercel --prod', { cwd: root, stdio: 'inherit' });
     } catch {
-      console.log(C.error('✗ Vercel CLI not installed'));
-      console.log(C.muted('  Run: npm i -g vercel'));
+      fail('Deploy failed', 'The output above has the details.');
     }
 
   } else if (target === 'netlify') {
+    if (!hasCommand('netlify')) return fail('Netlify CLI not installed', 'Run: npm i -g netlify-cli');
     try {
-      execSync('which netlify', { stdio: 'ignore' });
       execSync('netlify deploy --prod --dir=dist', { cwd: root, stdio: 'inherit' });
     } catch {
-      console.log(C.error('✗ Netlify CLI not installed'));
-      console.log(C.muted('  Run: npm i -g netlify-cli'));
+      fail('Deploy failed', 'The output above has the details.');
     }
   }
 }

@@ -3,6 +3,8 @@ import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { fail, printJson } from '../utils/output.js';
+import type { JsonOptions } from '../types.js';
 
 /**
  * Directive help reads the site's own schema (src/plugins/directives/schema.mjs),
@@ -57,14 +59,12 @@ const FORM_SYNTAX: Record<DirectiveSpec['forms'][number], (name: string) => stri
 async function loadSchema(): Promise<DirectiveSchema | null> {
   const root = getProjectRoot();
   if (!root) {
-    console.log(C.error('✗ Not inside a Vergil site'));
-    console.log(C.muted('  Directive help reads the site\'s own directive list. Run it from your site folder.'));
+    fail('Not inside a Vergil site', 'Directive help reads the site\'s own directive list. Run it from your site folder.');
     return null;
   }
   const file = join(root, SCHEMA_PATH);
   if (!existsSync(file)) {
-    console.log(C.error(`✗ No directive list at ${SCHEMA_PATH}`));
-    console.log(C.muted('  This site runs an older theme. Update the theme to get directive help.'));
+    fail(`No directive list at ${SCHEMA_PATH}`, 'This site runs an older theme. Update the theme to get directive help.');
     return null;
   }
   return (await import(pathToFileURL(file).href)) as DirectiveSchema;
@@ -116,12 +116,23 @@ function printExtra(e: ExtraSpec): void {
   console.log();
 }
 
-export async function directiveHelpCommand(topic?: string): Promise<void> {
+export async function directiveHelpCommand(topic?: string, options: JsonOptions = {}): Promise<void> {
   const schema = await loadSchema();
   if (!schema) return;
   const { CATEGORIES, DIRECTIVES, EXTRAS } = schema;
 
   if (!topic || topic === 'directives') {
+    if (options.json) {
+      // Names and one-liners only; `vg help <name> --json` has the full spec
+      return printJson({
+        count: DIRECTIVES.length,
+        categories: CATEGORIES.map((name) => ({
+          name,
+          directives: DIRECTIVES.filter((d) => d.category === name).map((d) => ({ name: d.name, summary: d.summary })),
+        })),
+        extras: EXTRAS.map((e) => ({ name: e.name, title: e.title })),
+      });
+    }
     console.log(C.accent(`\nVergil Directives — ${DIRECTIVES.length} 个内容指令\n`));
     console.log(C.muted('Use `vg help <directive>` for syntax; `vg help code` and `vg help math` cover code blocks and math.'));
     console.log(C.muted('`pnpm directives:ref` prints the full reference as Markdown, `pnpm directives:check` checks your posts.\n'));
@@ -138,11 +149,10 @@ export async function directiveHelpCommand(topic?: string): Promise<void> {
 
   const name = ALIASES[topic] || topic;
   const directive = DIRECTIVES.find((d) => d.name === name);
-  if (directive) return printDirective(directive);
+  if (directive) return options.json ? printJson(directive) : printDirective(directive);
 
   const extra = EXTRAS.find((e) => e.name === name);
-  if (extra) return printExtra(extra);
+  if (extra) return options.json ? printJson(extra) : printExtra(extra);
 
-  console.log(C.error(`✗ Directive not found: ${topic}`));
-  console.log(C.muted('Run `vg help directives` to see all'));
+  fail(`Directive not found: ${topic}`, 'Run `vg help directives` to see all');
 }

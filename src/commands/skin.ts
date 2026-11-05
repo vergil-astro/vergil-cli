@@ -4,12 +4,13 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { canPrompt, fail, warn, NOT_IN_SITE_HINT } from '../utils/output.js';
 import {
-  CONTRACT_PATH, IDENTITY_PATH, KINDS, NAME_RE,
+  CONTRACT_PATH, IDENTITY_PATH, NAME_RE, SKINS_DIR,
   deriveName, describeSource, installFiles, installedNames, packageDir, parseSource,
   readContract, readDefaultSkin, readManifest, readNameList, readSourceRecord,
   scanFiles, stageSource, validatePackage, writeDefaultSkin, writeNameList,
-  type PackageKind, type Source,
+  type Source,
 } from '../utils/appearance.js';
 
 interface AddOptions {
@@ -28,21 +29,15 @@ interface Site {
   contract: number;
 }
 
-function fail(message: string, hint?: string): void {
-  console.log(C.error(`✗ ${message}`));
-  if (hint) console.log(C.muted(`  ${hint}`));
-  process.exitCode = 1;
-}
-
 function requireSite(): Site | null {
   const root = getProjectRoot();
   if (!root) {
-    fail('Not inside a Vergil project');
+    fail('Not inside a Vergil project', NOT_IN_SITE_HINT);
     return null;
   }
   const contract = readContract(root);
   if (contract === null) {
-    fail("This site's Vergil version doesn't support skin and scheme packages yet", `${CONTRACT_PATH} is missing. Sync the theme first.`);
+    fail("This site's Vergil version doesn't support skin packages yet", `${CONTRACT_PATH} is missing. Sync the theme first.`);
     return null;
   }
   return { root, contract };
@@ -54,7 +49,7 @@ function editIdentity(root: string, edit: (text: string) => string | null, manua
   const text = existsSync(file) ? readFileSync(file, 'utf8') : null;
   const next = text === null ? null : edit(text);
   if (next === null) {
-    console.log(C.warning(`⚠ Couldn't update ${IDENTITY_PATH} automatically. ${manual}`));
+    warn(`Couldn't update ${IDENTITY_PATH} automatically. ${manual}`);
     return false;
   }
   if (next !== text) writeFileSync(file, next);
@@ -66,23 +61,23 @@ function readIdentity(root: string): string {
   return existsSync(file) ? readFileSync(file, 'utf8') : '';
 }
 
-/** Scheme IDs already taken by other installed packages, to catch clashes before the build does */
-function takenSchemeIds(root: string, except: { kind: PackageKind; name: string }): Map<string, string> {
+/** IDs of the schemes a skin bundles */
+function bundledSchemeIds(manifest: Record<string, unknown> | null): string[] {
+  const schemes = Array.isArray(manifest?.schemes) ? manifest.schemes : [];
+  return schemes.map((s: { id?: unknown }) => s?.id).filter((id: unknown): id is string => typeof id === 'string');
+}
+
+/** Scheme IDs bundled by the other installed skins, to catch clashes before the build does */
+function takenSchemeIds(root: string, except: string): Map<string, string> {
   const taken = new Map<string, string>();
-  for (const kind of ['skin', 'scheme'] as const) {
-    for (const name of installedNames(root, kind)) {
-      if (kind === except.kind && name === except.name) continue;
-      const where = `${KINDS[kind].dir}/${name}`;
-      if (kind === 'scheme') taken.set(name, where);
-      const manifest = readManifest(join(root, KINDS[kind].dir, name), kind);
-      const schemes = kind === 'skin' && Array.isArray(manifest?.schemes) ? manifest.schemes : [];
-      for (const s of schemes) if (s && typeof s.id === 'string') taken.set(s.id, where);
-    }
+  for (const name of installedNames(root)) {
+    if (name === except) continue;
+    for (const id of bundledSchemeIds(readManifest(join(root, SKINS_DIR, name)))) taken.set(id, `${SKINS_DIR}/${name}`);
   }
   return taken;
 }
 
-async function fetchAndInstall(site: Site, kind: PackageKind, name: string, source: Source, verb: string): Promise<boolean> {
+async function fetchAndInstall(site: Site, name: string, source: Source, verb: string): Promise<boolean> {
   const spinner = ora(`Fetching ${describeSource(source)}...`).start();
   let staged;
   try {
@@ -94,29 +89,25 @@ async function fetchAndInstall(site: Site, kind: PackageKind, name: string, sour
   }
   try {
     const scan = scanFiles(staged.dir);
-    const problems = validatePackage(staged.dir, scan.files, kind, site.contract);
+    const problems = validatePackage(staged.dir, scan.files, site.contract);
 
-    const manifest = readManifest(staged.dir, kind);
-    const ownIds = kind === 'scheme'
-      ? [name]
-      : (Array.isArray(manifest?.schemes) ? manifest.schemes : []).map((s: { id?: unknown }) => s?.id).filter((id: unknown): id is string => typeof id === 'string');
-    const taken = takenSchemeIds(site.root, { kind, name });
-    for (const id of ownIds) {
+    const taken = takenSchemeIds(site.root, name);
+    for (const id of bundledSchemeIds(readManifest(staged.dir))) {
       if (taken.has(id)) problems.push(`scheme ID "${id}" is already used by ${taken.get(id)}`);
     }
 
     if (problems.length) {
-      spinner.fail(`${describeSource(source)} is not a usable Vergil ${kind}`);
-      for (const problem of problems) console.log(C.error(`  • ${problem}`));
+      spinner.fail(`${describeSource(source)} is not a usable Vergil skin`);
+      for (const problem of problems) console.error(C.error(`  • ${problem}`));
       process.exitCode = 1;
       return false;
     }
 
-    const target = installFiles(site.root, kind, name, staged.dir, scan.files, source);
-    spinner.succeed(`${verb} ${kind} ${C.accent(name)} → ${relative(site.root, target)}/ (${scan.files.length} files)`);
+    const target = installFiles(site.root, name, staged.dir, scan.files, source);
+    spinner.succeed(`${verb} skin ${C.accent(name)} → ${relative(site.root, target)}/ (${scan.files.length} files)`);
     if (scan.skipped.length) {
       const preview = scan.skipped.slice(0, 5).join(', ') + (scan.skipped.length > 5 ? ', ...' : '');
-      console.log(C.muted(`  Left out ${scan.skipped.length} file(s) a ${kind} doesn't need: ${preview}`));
+      console.log(C.muted(`  Left out ${scan.skipped.length} file(s) a skin doesn't need: ${preview}`));
     }
     return true;
   } catch (error) {
@@ -130,90 +121,79 @@ async function fetchAndInstall(site: Site, kind: PackageKind, name: string, sour
 
 // ── add ──────────────────────────────────────────────────────────────────
 
-export function addCommand(kind: PackageKind) {
-  return async (input: string, options: AddOptions): Promise<void> => {
-    const site = requireSite();
-    if (!site) return;
-    const { dir, field } = KINDS[kind];
+export async function skinAddCommand(input: string, options: AddOptions): Promise<void> {
+  const site = requireSite();
+  if (!site) return;
 
-    let source: Source;
-    try {
-      source = parseSource(input, kind);
-    } catch (error) {
-      fail((error as Error).message);
-      return;
-    }
+  let source: Source;
+  try {
+    source = parseSource(input);
+  } catch (error) {
+    fail((error as Error).message);
+    return;
+  }
 
-    const name = options.name ?? deriveName(source, kind);
-    if (!name || !NAME_RE.test(name)) {
-      fail(`Can't use "${options.name ?? input}" as a ${kind} name`, 'Pass --name <name>: lowercase letters, digits and dashes, starting with a letter');
-      return;
-    }
-    if (kind === 'skin' && name === 'classic') {
-      fail('classic is built in and can\'t be replaced', 'Install it under another name with --name');
-      return;
-    }
-    if (existsSync(packageDir(site.root, kind, name)) && !options.force) {
-      fail(`${dir}/${name}/ already exists`, `Run vg ${kind} update ${name}, or add --force to replace it`);
-      return;
-    }
+  const name = options.name ?? deriveName(source);
+  if (!name || !NAME_RE.test(name)) {
+    fail(`Can't use "${options.name ?? input}" as a skin name`, 'Pass --name <name>: lowercase letters, digits and dashes, starting with a letter');
+    return;
+  }
+  if (name === 'classic') {
+    fail('classic is built in and can\'t be replaced', 'Install it under another name with --name');
+    return;
+  }
+  if (existsSync(packageDir(site.root, name)) && !options.force) {
+    fail(`${SKINS_DIR}/${name}/ already exists`, `Run vg skin update ${name}, or add --force to replace it`);
+    return;
+  }
 
-    if (!await fetchAndInstall(site, kind, name, source, 'Installed')) return;
+  if (!await fetchAndInstall(site, name, source, 'Installed')) return;
 
-    const manual = `Add '${name}' to ${field} in ${IDENTITY_PATH}.`;
-    if (options.enable === false) {
-      console.log(C.muted(`  Not enabled. ${manual}`));
-    } else if (editIdentity(site.root, (text) => {
-      const list = readNameList(text, field) ?? [];
-      return list.includes(name) ? text : writeNameList(text, field, [...list, name]);
-    }, manual)) {
-      console.log(C.success(`✓ Enabled in ${IDENTITY_PATH} (${field})`));
-    }
-    if (kind === 'skin') console.log(C.muted(`  Make it the default for new visitors: vg skin use ${name}`));
-  };
+  const manual = `Add '${name}' to skins in ${IDENTITY_PATH}.`;
+  if (options.enable === false) {
+    console.log(C.muted(`  Not enabled. ${manual}`));
+  } else if (editIdentity(site.root, (text) => {
+    const list = readNameList(text) ?? [];
+    return list.includes(name) ? text : writeNameList(text, [...list, name]);
+  }, manual)) {
+    console.log(C.success(`✓ Enabled in ${IDENTITY_PATH} (skins)`));
+  }
+  console.log(C.muted(`  Make it the default for new visitors: vg skin use ${name}`));
 }
 
 // ── list ─────────────────────────────────────────────────────────────────
 
-export function listCommand(kind: PackageKind) {
-  return (): void => {
-    const site = requireSite();
-    if (!site) return;
-    const { dir, field } = KINDS[kind];
-    const identity = readIdentity(site.root);
-    const enabled = readNameList(identity, field) ?? [];
-    const installed = installedNames(site.root, kind);
-    const defaultSkin = kind === 'skin' ? readDefaultSkin(identity) ?? 'classic' : null;
+export function skinListCommand(): void {
+  const site = requireSite();
+  if (!site) return;
+  const identity = readIdentity(site.root);
+  const enabled = readNameList(identity) ?? [];
+  const installed = installedNames(site.root);
+  const defaultSkin = readDefaultSkin(identity) ?? 'classic';
 
-    console.log('');
-    console.log(C.title(kind === 'skin' ? `Skins  (default: ${defaultSkin})` : 'Color schemes'));
-    if (kind === 'skin') {
-      console.log(`  ${C.success('●')} ${C.text('classic'.padEnd(16))} ${C.muted('built in')}`);
-    } else {
-      console.log(`  ${C.success('●')} ${C.text('A–I, K'.padEnd(16))} ${C.muted('built in')}`);
-    }
+  console.log('');
+  console.log(C.title(`Skins  (default: ${defaultSkin})`));
+  console.log(`  ${C.success('●')} ${C.text('classic'.padEnd(16))} ${C.muted('built in')}`);
 
-    for (const name of installed) {
-      const packagePath = join(site.root, dir, name);
-      const manifest = readManifest(packagePath, kind);
-      const record = readSourceRecord(packagePath);
-      const notes: string[] = [];
-      if (manifest?.contract !== site.contract) notes.push(C.error(`targets contract ${JSON.stringify(manifest?.contract)}, site uses ${site.contract}`));
-      if (kind === 'skin' && Array.isArray(manifest?.schemes) && manifest.schemes.length) {
-        notes.push(`schemes: ${manifest.schemes.map((s: { id?: unknown }) => s?.id).join(', ')}`);
-      }
-      notes.push(record ? `from ${describeSource(record.source)}` : 'added by hand');
-      const isOn = enabled.includes(name);
-      const mark = isOn ? C.success('●') : C.muted('○');
-      const state = isOn ? 'enabled' : 'installed, not enabled';
-      console.log(`  ${mark} ${C.text(name.padEnd(16))} ${C.muted(state)}  ${C.muted('· ' + notes.join(' · '))}`);
-    }
-    for (const name of enabled.filter((n) => !installed.includes(n))) {
-      console.log(`  ${C.error('✗')} ${C.text(name.padEnd(16))} ${C.error(`enabled but not installed: put it in ${dir}/${name}/ or run vg ${kind} add ${name}`)}`);
-    }
-    if (!installed.length) console.log(C.muted(`  No ${kind}s installed in ${dir}/ yet. Try: vg ${kind} add <name|owner/repo|./folder>`));
-    console.log('');
-  };
+  for (const name of installed) {
+    const packagePath = join(site.root, SKINS_DIR, name);
+    const manifest = readManifest(packagePath);
+    const record = readSourceRecord(packagePath);
+    const notes: string[] = [];
+    if (manifest?.contract !== site.contract) notes.push(C.error(`targets contract ${JSON.stringify(manifest?.contract)}, site uses ${site.contract}`));
+    const schemes = bundledSchemeIds(manifest);
+    if (schemes.length) notes.push(`schemes: ${schemes.join(', ')}`);
+    notes.push(record ? `from ${describeSource(record.source)}` : 'added by hand');
+    const isOn = enabled.includes(name);
+    const mark = isOn ? C.success('●') : C.muted('○');
+    const state = isOn ? 'enabled' : 'installed, not enabled';
+    console.log(`  ${mark} ${C.text(name.padEnd(16))} ${C.muted(state)}  ${C.muted('· ' + notes.join(' · '))}`);
+  }
+  for (const name of enabled.filter((n) => !installed.includes(n))) {
+    console.log(`  ${C.error('✗')} ${C.text(name.padEnd(16))} ${C.error(`enabled but not installed: put it in ${SKINS_DIR}/${name}/ or run vg skin add ${name}`)}`);
+  }
+  if (!installed.length) console.log(C.muted(`  No skins installed in ${SKINS_DIR}/ yet. Try: vg skin add <name|owner/repo|./folder>`));
+  console.log('');
 }
 
 // ── use ──────────────────────────────────────────────────────────────────
@@ -222,13 +202,13 @@ export async function skinUseCommand(name: string): Promise<void> {
   const site = requireSite();
   if (!site) return;
   if (name !== 'classic') {
-    if (!NAME_RE.test(name) || !existsSync(packageDir(site.root, 'skin', name))) {
+    if (!NAME_RE.test(name) || !existsSync(packageDir(site.root, name))) {
       fail(`Skin "${name}" is not installed`, `Install it first: vg skin add ${name}`);
       return;
     }
-    const enabled = readNameList(readIdentity(site.root), 'skins') ?? [];
+    const enabled = readNameList(readIdentity(site.root)) ?? [];
     if (!enabled.includes(name)) {
-      const ok = editIdentity(site.root, (text) => writeNameList(text, 'skins', [...(readNameList(text, 'skins') ?? []), name]),
+      const ok = editIdentity(site.root, (text) => writeNameList(text, [...(readNameList(text) ?? []), name]),
         `Add '${name}' to skins in ${IDENTITY_PATH}.`);
       if (ok) console.log(C.success(`✓ Enabled ${name} in ${IDENTITY_PATH} (skins)`));
     }
@@ -241,75 +221,69 @@ export async function skinUseCommand(name: string): Promise<void> {
 
 // ── update ───────────────────────────────────────────────────────────────
 
-export function updateCommand(kind: PackageKind) {
-  return async (name?: string): Promise<void> => {
-    const site = requireSite();
-    if (!site) return;
-    const { dir } = KINDS[kind];
-    const names = name ? [name] : installedNames(site.root, kind);
-    if (!names.length) {
-      console.log(C.muted(`No ${kind}s installed in ${dir}/.`));
-      return;
+export async function skinUpdateCommand(name?: string): Promise<void> {
+  const site = requireSite();
+  if (!site) return;
+  const names = name ? [name] : installedNames(site.root);
+  if (!names.length) {
+    console.log(C.muted(`No skins installed in ${SKINS_DIR}/.`));
+    return;
+  }
+  for (const n of names) {
+    if (!NAME_RE.test(n) || !existsSync(packageDir(site.root, n))) {
+      fail(`skin "${n}" is not installed`);
+      continue;
     }
-    for (const n of names) {
-      if (!NAME_RE.test(n) || !existsSync(packageDir(site.root, kind, n))) {
-        fail(`${kind} "${n}" is not installed`);
-        continue;
-      }
-      const record = readSourceRecord(packageDir(site.root, kind, n));
-      if (!record) {
-        console.log(C.warning(`⚠ ${dir}/${n}/ was added by hand, no source to update from. Skipped.`));
-        continue;
-      }
-      await fetchAndInstall(site, kind, n, record.source, 'Updated');
+    const record = readSourceRecord(packageDir(site.root, n));
+    if (!record) {
+      warn(`${SKINS_DIR}/${n}/ was added by hand, no source to update from. Skipped.`);
+      continue;
     }
-  };
+    await fetchAndInstall(site, n, record.source, 'Updated');
+  }
 }
 
 // ── remove ───────────────────────────────────────────────────────────────
 
-export function removeCommand(kind: PackageKind) {
-  return async (name: string, options: RemoveOptions): Promise<void> => {
-    const site = requireSite();
-    if (!site) return;
-    const { dir, field } = KINDS[kind];
-    if (kind === 'skin' && name === 'classic') {
-      fail('classic is built in and can\'t be removed');
-      return;
-    }
-    if (!NAME_RE.test(name)) {
-      fail(`"${name}" is not a valid ${kind} name`);
-      return;
-    }
-    const target = packageDir(site.root, kind, name);
-    const identity = readIdentity(site.root);
-    const isEnabled = (readNameList(identity, field) ?? []).includes(name);
-    const isInstalled = existsSync(target);
-    if (!isInstalled && !isEnabled) {
-      fail(`${kind} "${name}" is not installed`);
-      return;
-    }
+export async function skinRemoveCommand(name: string, options: RemoveOptions): Promise<void> {
+  const site = requireSite();
+  if (!site) return;
+  if (name === 'classic') {
+    fail('classic is built in and can\'t be removed');
+    return;
+  }
+  if (!NAME_RE.test(name)) {
+    fail(`"${name}" is not a valid skin name`);
+    return;
+  }
+  const target = packageDir(site.root, name);
+  const identity = readIdentity(site.root);
+  const isEnabled = (readNameList(identity) ?? []).includes(name);
+  const isInstalled = existsSync(target);
+  if (!isInstalled && !isEnabled) {
+    fail(`skin "${name}" is not installed`);
+    return;
+  }
 
-    if (!options.yes) {
-      if (!process.stdin.isTTY) {
-        fail('Refusing to delete without confirmation', 'Add --yes to confirm in a non-interactive shell');
-        return;
-      }
-      const what = isInstalled ? `Delete ${dir}/${name}/ and disable it` : `Remove "${name}" from ${field}`;
-      const { confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message: `${what}?`, default: false }]);
-      if (!confirmed) return;
+  if (!options.yes) {
+    if (!canPrompt) {
+      fail('Refusing to delete without confirmation', 'Add --yes to confirm in a non-interactive shell');
+      return;
     }
+    const what = isInstalled ? `Delete ${SKINS_DIR}/${name}/ and disable it` : `Remove "${name}" from skins`;
+    const { confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message: `${what}?`, default: false }]);
+    if (!confirmed) return;
+  }
 
-    if (isEnabled) {
-      editIdentity(site.root, (text) => writeNameList(text, field, (readNameList(text, field) ?? []).filter((n) => n !== name)),
-        `Remove '${name}' from ${field} in ${IDENTITY_PATH}.`);
+  if (isEnabled) {
+    editIdentity(site.root, (text) => writeNameList(text, (readNameList(text) ?? []).filter((n) => n !== name)),
+      `Remove '${name}' from skins in ${IDENTITY_PATH}.`);
+  }
+  if (readDefaultSkin(readIdentity(site.root)) === name) {
+    if (editIdentity(site.root, (text) => writeDefaultSkin(text, 'classic'), `Set skin: 'classic' in ${IDENTITY_PATH}.`)) {
+      console.log(C.muted(`  ${name} was the default skin; the default is now classic.`));
     }
-    if (kind === 'skin' && readDefaultSkin(readIdentity(site.root)) === name) {
-      if (editIdentity(site.root, (text) => writeDefaultSkin(text, 'classic'), `Set skin: 'classic' in ${IDENTITY_PATH}.`)) {
-        console.log(C.muted(`  ${name} was the default skin; the default is now classic.`));
-      }
-    }
-    if (isInstalled) rmSync(target, { recursive: true, force: true });
-    console.log(C.success(`✓ Removed ${kind} ${name}`));
-  };
+  }
+  if (isInstalled) rmSync(target, { recursive: true, force: true });
+  console.log(C.success(`✓ Removed skin ${name}`));
 }

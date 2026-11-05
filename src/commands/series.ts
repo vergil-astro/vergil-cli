@@ -4,6 +4,8 @@ import matter from 'gray-matter';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot, listMarkdownFiles } from '../utils/file.js';
 import { loadSeriesDefs, findSeriesDef, resolvePostSeries } from '../utils/series.js';
+import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import type { JsonOptions } from '../types.js';
 
 interface SeriesInfo {
   id: string;
@@ -38,7 +40,7 @@ function collectSeries(root: string): Map<string, SeriesInfo> {
 
       seriesMap.get(series.id)!.posts.push({
         title: String(data.title || 'Untitled'),
-        path: filePath.replace(root + '/', ''),
+        path: sitePath(root, filePath),
         absPath: filePath,
         draft: data.draft === true,
         date: new Date(data.publishDate).getTime() || 0,
@@ -56,14 +58,26 @@ function collectSeries(root: string): Map<string, SeriesInfo> {
   return seriesMap;
 }
 
-export async function seriesListCommand(): Promise<void> {
+const dateOrNull = (ms: number): string | null => (ms ? new Date(ms).toISOString().slice(0, 10) : null);
+
+export async function seriesListCommand(options: JsonOptions = {}): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const seriesMap = collectSeries(root);
+
+  if (options.json) {
+    const series = Array.from(seriesMap.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        dir: s.dir ? `src/content/blog/${s.dir}` : null,
+        posts: s.posts.length,
+        drafts: s.posts.filter(p => p.draft).length,
+      }));
+    return printJson({ series });
+  }
 
   if (seriesMap.size === 0) {
     console.log(C.muted('No series found. Use --series when creating a post.'));
@@ -86,24 +100,26 @@ export async function seriesListCommand(): Promise<void> {
   }
 }
 
-export async function seriesShowCommand(seriesName: string): Promise<void> {
+export async function seriesShowCommand(seriesName: string, options: JsonOptions = {}): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const seriesMap = collectSeries(root);
   const match = findSeriesDef(Array.from(seriesMap.values()), seriesName);
   const series = match && seriesMap.get(match.id);
 
   if (!series) {
-    console.log(C.error(`✗ Series not found: ${seriesName}`));
     const available = Array.from(seriesMap.values()).map(s => s.name);
-    if (available.length > 0) {
-      console.log(C.muted(`Available: ${available.join(', ')}`));
-    }
-    return;
+    return fail(`Series not found: ${seriesName}`, ...(available.length > 0 ? [`Available: ${available.join(', ')}`] : []));
+  }
+
+  if (options.json) {
+    return printJson({
+      id: series.id,
+      name: series.name,
+      dir: series.dir ? `src/content/blog/${series.dir}` : null,
+      posts: series.posts.map(p => ({ title: p.title, path: p.path, draft: p.draft, date: dateOrNull(p.date) })),
+    });
   }
 
   console.log(C.accent(`\n${series.name}\n`));

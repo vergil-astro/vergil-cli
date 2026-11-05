@@ -16,8 +16,9 @@ import { cleanCommand } from './commands/clean.js';
 import { seriesListCommand, seriesShowCommand } from './commands/series.js';
 import { docsListCommand, docsShowCommand } from './commands/docs.js';
 import { directiveHelpCommand } from './commands/directive-help.js';
-import { addCommand, listCommand as appearanceListCommand, removeCommand, skinUseCommand, updateCommand } from './commands/skin.js';
-import type { ListOptions } from './types.js';
+import { skinAddCommand, skinListCommand, skinRemoveCommand, skinUpdateCommand, skinUseCommand } from './commands/skin.js';
+import type { JsonOptions, ListOptions } from './types.js';
+import { stdoutIsTTY } from './utils/output.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
@@ -92,64 +93,83 @@ program
 // -- Content Management --
 program
   .command('publish [slug]')
-  .description('Publish a draft (remove draft flag). Run without slug to pick interactively.')
+  .description('Publish a draft (remove draft flag). Without a slug, pick from a list (terminal only).')
   .action(publishCommand);
+
+const JSON_FLAG = '--json';
+const JSON_DESC = 'Print one JSON document to stdout instead of text';
+
+/** Options of a subcommand merged with its parent's: `vg docs list -d` puts -d on either one */
+function mergedOpts(cmd: Command): ListOptions {
+  return { ...(cmd.parent?.opts() as ListOptions | undefined), ...(cmd.opts() as ListOptions) };
+}
 
 program
   .command('list [type]')
   .description('List content — `vg list` for summary, `vg list <type>` for items')
   .option('-d, --drafts', 'Show only drafts')
+  .option(JSON_FLAG, JSON_DESC)
   .action((type: string | undefined, options: ListOptions) => listCommand(type, options));
 
 const seriesCmd = program
   .command('series [name]')
   .description('Manage post series — `vg series` lists, `vg series <name>` shows one')
-  .action((name?: string) => {
-    if (!name) return seriesListCommand();
-    return seriesShowCommand(name);
+  .option(JSON_FLAG, JSON_DESC)
+  .action((name: string | undefined, options: ListOptions) => {
+    if (!name) return seriesListCommand(options);
+    return seriesShowCommand(name, options);
   });
 
 seriesCmd
   .command('list')
   .description('List all series and post counts')
-  .action(seriesListCommand);
+  .option(JSON_FLAG, JSON_DESC)
+  .action(function (this: Command) {
+    return seriesListCommand(mergedOpts(this));
+  });
 
 seriesCmd
   .command('show <name>')
   .description('Show all posts in a series')
-  .action(seriesShowCommand);
+  .option(JSON_FLAG, JSON_DESC)
+  .action(function (this: Command, name: string) {
+    return seriesShowCommand(name, mergedOpts(this));
+  });
 
 const docsCmd = program
   .command('docs [book]')
   .description('Browse documentation books — `vg docs` lists, `vg docs <book>` shows one')
   .option('-d, --drafts', 'Show only drafts')
+  .option(JSON_FLAG, JSON_DESC)
   .action((book?: string, options?: ListOptions) => {
-    if (!book) return docsListCommand(options?.drafts);
-    return docsShowCommand(book, options?.drafts);
+    if (!book) return docsListCommand(options?.drafts, options?.json);
+    return docsShowCommand(book, options?.drafts, options?.json);
   });
 
 docsCmd
   .command('list')
   .description('List all books with chapter counts')
   .option('-d, --drafts', 'Show only drafts')
+  .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command) {
-    const parentOpts = this.parent?.opts() as ListOptions | undefined;
-    return docsListCommand(parentOpts?.drafts);
+    const opts = mergedOpts(this);
+    return docsListCommand(opts.drafts, opts.json);
   });
 
 docsCmd
   .command('show <book>')
   .description('Show a book as a chapter tree')
   .option('-d, --drafts', 'Show only drafts')
+  .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command, book: string) {
-    const parentOpts = this.parent?.opts() as ListOptions | undefined;
-    return docsShowCommand(book, parentOpts?.drafts);
+    const opts = mergedOpts(this);
+    return docsShowCommand(book, opts.drafts, opts.json);
   });
 
-// -- Skin & color scheme packages --
+// -- Skins --
 const skinCmd = program
   .command('skin')
-  .description('Install and manage skins (skins/<name>/, enabled in identity.ts)');
+  .description('Install and manage skins (skins/<name>/, enabled in identity.ts). Extra color schemes come bundled in skins');
 
 skinCmd
   .command('add <source>')
@@ -157,12 +177,12 @@ skinCmd
   .option('-n, --name <name>', 'Install under this name')
   .option('-f, --force', 'Replace an existing install')
   .option('--no-enable', "Don't add it to skins in identity.ts")
-  .action(addCommand('skin'));
+  .action(skinAddCommand);
 
 skinCmd
   .command('list')
   .description('List built-in, installed and enabled skins')
-  .action(appearanceListCommand('skin'));
+  .action(skinListCommand);
 
 skinCmd
   .command('use <name>')
@@ -172,52 +192,25 @@ skinCmd
 skinCmd
   .command('update [name]')
   .description('Re-fetch installed skins from where they were installed from')
-  .action(updateCommand('skin'));
+  .action(skinUpdateCommand);
 
 skinCmd
   .command('remove <name>')
   .description('Disable a skin and delete its folder')
   .option('-y, --yes', 'Skip the confirmation prompt')
-  .action(removeCommand('skin'));
-
-const schemeCmd = program
-  .command('scheme')
-  .description('Install and manage color scheme packages (schemes/<name>/, enabled in identity.ts)');
-
-schemeCmd
-  .command('add <source>')
-  .description('Install a color scheme: a name, a GitHub repo (owner/repo[#ref]) or a local folder')
-  .option('-n, --name <name>', 'Install under this name')
-  .option('-f, --force', 'Replace an existing install')
-  .option('--no-enable', "Don't add it to schemes in identity.ts")
-  .action(addCommand('scheme'));
-
-schemeCmd
-  .command('list')
-  .description('List built-in, installed and enabled color schemes')
-  .action(appearanceListCommand('scheme'));
-
-schemeCmd
-  .command('update [name]')
-  .description('Re-fetch installed color schemes from where they were installed from')
-  .action(updateCommand('scheme'));
-
-schemeCmd
-  .command('remove <name>')
-  .description('Disable a color scheme and delete its folder')
-  .option('-y, --yes', 'Skip the confirmation prompt')
-  .action(removeCommand('scheme'));
+  .action(skinRemoveCommand);
 
 // -- Help --
 program
   .command('help [topic]')
-  .description('Show help for a topic (directives, new, init, etc.)')
-  .action(directiveHelpCommand);
+  .description('Directive help from this site\'s theme: `vg help directives`, `vg help callout`')
+  .option(JSON_FLAG, JSON_DESC)
+  .action((topic: string | undefined, options: JsonOptions) => directiveHelpCommand(topic, options));
 
 // -- Parse --
 const args = process.argv.slice(2);
 if (args.length === 0) {
-  printBanner();
+  if (stdoutIsTTY) printBanner();
   printHelp();
 } else {
   program.parse();

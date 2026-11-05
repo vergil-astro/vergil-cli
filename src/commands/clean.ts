@@ -2,13 +2,11 @@ import { rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
 
 export async function cleanCommand(): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const dirsToClean = ['dist', '.astro', 'node_modules/.vite'];
 

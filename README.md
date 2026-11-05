@@ -143,9 +143,9 @@ AI writing lives in the [vergil-skills](https://github.com/vergil-astro/vergil-s
 /plugin install vergil@vergil-astro
 ```
 
-### Skins & Color Schemes
+### Skins
 
-A Vergil site loads skins and color schemes like zsh plugins: a package lives in `skins/<name>/` (or `schemes/<name>/`) at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you.
+A Vergil site loads skins like zsh plugins: a skin lives in `skins/<name>/` at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you. Color schemes beyond the built-in A–I and K only come bundled in a skin; there are no standalone scheme packages.
 
 ```bash
 vg skin add someone/vergil-skin-paper     # Install from GitHub and enable it
@@ -156,27 +156,41 @@ vg skin list                              # Built-in, installed and enabled skin
 vg skin use paper                         # Make it the default for new visitors
 vg skin update [name]                     # Re-fetch from where it was installed
 vg skin remove paper                      # Disable it and delete its folder
-
-vg scheme add|list|update|remove          # The same for color scheme packages
 ```
 
 The official skins (`island`, `brutalism`) currently ship inside the theme repo's `skins/` folder; the `<name>` shorthand starts working once they're published as their own repos.
 
-**Options for `add`:** `-n, --name <name>` installs under another name (by default the repo or folder name, minus a `vergil-skin-` / `vergil-scheme-` prefix); `-f, --force` replaces an existing install; `--no-enable` installs without touching `identity.ts`. `remove` asks for confirmation; pass `-y, --yes` in scripts.
+**Options for `add`:** `-n, --name <name>` installs under another name (by default the repo or folder name, minus a `vergil-skin-` prefix); `-f, --force` replaces an existing install; `--no-enable` installs without touching `identity.ts`. `remove` asks for confirmation; pass `-y, --yes` in scripts.
 
-**Installed packages are committed with your site.** `add` copies a snapshot of the files into `skins/<name>/`, without a nested `.git`, so CI builds have everything they need. The source is recorded in `skins/<name>/.vg-source.json`, which is what `update` reads.
+**Installed skins are committed with your site.** `add` copies a snapshot of the files into `skins/<name>/`, without a nested `.git`, so CI builds have everything they need. The source is recorded in `skins/<name>/.vg-source.json`, which is what `update` reads.
 
 **Packages are data and CSS only.** `add` copies `.json`, `.css`, `.md`, images, fonts and license files; scripts, configs and dotfiles are left out and listed. It refuses archives with links or paths that escape the folder, and checks the manifest against the site's appearance contract (`src/appearance/contract.json`) before installing, so a package that would break the build never lands. See the theme docs, *皮肤与配色接口*, for the package format.
 
 ### Help
 
 ```bash
-vg help                                   # Show all available commands
+vg                                        # Show all available commands
 vg help directives                        # List all Markdown directives
 vg help callout                           # Syntax, attributes and an example for one directive
 ```
 
 Directive help reads `src/plugins/directives/schema.mjs` in your site, so it matches the theme version you run. Run it from your site folder.
+
+## For Agents and Scripts
+
+vg works the same in a terminal and in a pipe, apart from things only a person needs:
+
+- `--json` on `list`, `series`, `docs` and `help` prints one JSON document to stdout and nothing else. Paths are relative to the site root.
+- Errors and warnings go to stderr, and a failed command exits with 1.
+- Outside a terminal there are no colors, file hyperlinks, banner or spinner animation.
+- Nothing waits for an answer outside a terminal: `vg publish` needs a slug, and `vg skin remove` needs `--yes`.
+
+```bash
+vg list post -d --json                    # Draft posts
+vg series --json                          # Series with post and draft counts
+vg docs vergil-guide --json               # A book's chapter tree
+vg help callout --json                    # One directive's full spec
+```
 
 ## Content Types
 

@@ -40,6 +40,11 @@ export interface DeployOptions {
   target?: string;
 }
 
-export interface ListOptions {
+export interface JsonOptions {
+  /** Print one JSON document to stdout instead of text */
+  json?: boolean;
+}
+
+export interface ListOptions extends JsonOptions {
   drafts?: boolean;
 }

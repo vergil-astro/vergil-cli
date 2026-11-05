@@ -24,34 +24,33 @@ afterEach(() => {
 
 describe('parseSource', () => {
   it('maps a bare name to the official repo', () => {
-    expect(parseSource('island', 'skin')).toEqual({ type: 'github', owner: 'vergil-astro', repo: 'vergil-skin-island', ref: undefined });
-    expect(parseSource('ocean', 'scheme')).toMatchObject({ repo: 'vergil-scheme-ocean' });
+    expect(parseSource('island')).toEqual({ type: 'github', owner: 'vergil-astro', repo: 'vergil-skin-island', ref: undefined });
   });
   it('reads owner/repo with an optional ref', () => {
-    expect(parseSource('someone/fancy-skin#v1.2.0', 'skin')).toEqual({ type: 'github', owner: 'someone', repo: 'fancy-skin', ref: 'v1.2.0' });
+    expect(parseSource('someone/fancy-skin#v1.2.0')).toEqual({ type: 'github', owner: 'someone', repo: 'fancy-skin', ref: 'v1.2.0' });
   });
   it('reads local folders', () => {
-    expect(parseSource('./skins-src/x', 'skin', '/site')).toEqual({ type: 'local', path: '/site/skins-src/x' });
-    expect(parseSource('/abs/x', 'skin')).toEqual({ type: 'local', path: '/abs/x' });
+    expect(parseSource('./skins-src/x', '/site')).toEqual({ type: 'local', path: '/site/skins-src/x' });
+    expect(parseSource('/abs/x')).toEqual({ type: 'local', path: '/abs/x' });
   });
   it('rejects unsafe or malformed input', () => {
-    expect(() => parseSource('Island', 'skin')).toThrow(/not a valid skin name/);
-    expect(() => parseSource('a/b/c', 'skin')).toThrow(/Can't read/);
-    expect(() => parseSource('owner/..', 'skin')).toThrow(/Can't read/);
-    expect(() => parseSource('owner/repo#../x', 'skin')).toThrow(/not a valid git ref/);
-    expect(() => parseSource('owner/re po', 'skin')).toThrow(/Can't read/);
-    expect(() => parseSource('  ', 'skin')).toThrow(/Missing/);
+    expect(() => parseSource('Island')).toThrow(/not a valid skin name/);
+    expect(() => parseSource('a/b/c')).toThrow(/Can't read/);
+    expect(() => parseSource('owner/..')).toThrow(/Can't read/);
+    expect(() => parseSource('owner/repo#../x')).toThrow(/not a valid git ref/);
+    expect(() => parseSource('owner/re po')).toThrow(/Can't read/);
+    expect(() => parseSource('  ')).toThrow(/Missing/);
   });
 });
 
 describe('deriveName', () => {
   it('strips the official prefix and lowercases', () => {
-    expect(deriveName({ type: 'github', owner: 'o', repo: 'vergil-skin-island' }, 'skin')).toBe('island');
-    expect(deriveName({ type: 'github', owner: 'o', repo: 'Fancy-Skin' }, 'skin')).toBe('fancy-skin');
-    expect(deriveName({ type: 'local', path: '/x/brutalism' }, 'skin')).toBe('brutalism');
+    expect(deriveName({ type: 'github', owner: 'o', repo: 'vergil-skin-island' })).toBe('island');
+    expect(deriveName({ type: 'github', owner: 'o', repo: 'Fancy-Skin' })).toBe('fancy-skin');
+    expect(deriveName({ type: 'local', path: '/x/brutalism' })).toBe('brutalism');
   });
   it('returns null when the name would be invalid', () => {
-    expect(deriveName({ type: 'github', owner: 'o', repo: 'my_skin.v2' }, 'skin')).toBeNull();
+    expect(deriveName({ type: 'github', owner: 'o', repo: 'my_skin.v2' })).toBeNull();
   });
 });
 
@@ -72,7 +71,7 @@ describe('scanFiles', () => {
 describe('validatePackage', () => {
   const skin = (manifest: object, extra: Record<string, string> = {}) => {
     const dir = tempDir({ 'skin.json': JSON.stringify(manifest), 'skin.css': '', ...extra });
-    return validatePackage(dir, scanFiles(dir).files, 'skin', 1);
+    return validatePackage(dir, scanFiles(dir).files, 1);
   };
   it('accepts a valid skin with a bundled scheme', () => {
     expect(skin({ contract: 1, schemes: [{ id: 'mint', short: 'T', swatch: '#00aa88' }] }, { 'schemes/mint.css': '' })).toEqual([]);
@@ -87,9 +86,9 @@ describe('validatePackage', () => {
   });
   it('needs the manifest and the CSS entry', () => {
     const dir = tempDir({ 'skin.css': '' });
-    expect(validatePackage(dir, scanFiles(dir).files, 'skin', 1)).toEqual(['missing skin.json']);
-    const dir2 = tempDir({ 'scheme.json': JSON.stringify({ contract: 1, short: 'O', swatch: '#0066cc' }) });
-    expect(validatePackage(dir2, scanFiles(dir2).files, 'scheme', 1)).toEqual(['missing scheme.css']);
+    expect(validatePackage(dir, scanFiles(dir).files, 1)).toEqual(['missing skin.json']);
+    const dir2 = tempDir({ 'skin.json': JSON.stringify({ contract: 1 }) });
+    expect(validatePackage(dir2, scanFiles(dir2).files, 1)).toEqual(['missing skin.css']);
   });
 });
 
@@ -97,16 +96,16 @@ describe('installFiles', () => {
   it('copies only the listed files, records the source and replaces an old install', () => {
     const site = tempDir();
     const from = tempDir({ 'skin.json': '{}', 'skin.css': 'a{}', 'styles/b.css': '', 'evil.js': '' });
-    const target = installFiles(site, 'skin', 'demo', from, ['skin.json', 'skin.css', 'styles/b.css'], { type: 'local', path: from });
+    const target = installFiles(site, 'demo', from, ['skin.json', 'skin.css', 'styles/b.css'], { type: 'local', path: from });
     expect(target).toBe(join(site, 'skins', 'demo'));
     expect(existsSync(join(target, 'evil.js'))).toBe(false);
     expect(readFileSync(join(target, 'skin.css'), 'utf8')).toBe('a{}');
     expect(readSourceRecord(target)?.source).toEqual({ type: 'local', path: from });
-    installFiles(site, 'skin', 'demo', from, ['skin.json', 'skin.css'], { type: 'local', path: from });
+    installFiles(site, 'demo', from, ['skin.json', 'skin.css'], { type: 'local', path: from });
     expect(existsSync(join(target, 'styles'))).toBe(false);
   });
   it('refuses names that would leave skins/', () => {
-    expect(() => packageDir(tempDir(), 'skin', '../evil')).toThrow();
+    expect(() => packageDir(tempDir(), '../evil')).toThrow();
   });
 });
 
@@ -115,18 +114,16 @@ describe('identity.ts edits', () => {
     'export const siteInfo = {',
     "    skin: 'classic',",
     "    skins: ['island', 'brutalism'] as string[],",
-    '    schemes: [] as string[],',
     "    subtitle: 'costs $5 / $& month',",
     '};',
   ].join('\n');
 
   it('reads the lists and the default skin', () => {
-    expect(readNameList(identity, 'skins')).toEqual(['island', 'brutalism']);
-    expect(readNameList(identity, 'schemes')).toEqual([]);
+    expect(readNameList(identity)).toEqual(['island', 'brutalism']);
     expect(readDefaultSkin(identity)).toBe('classic');
   });
   it('rewrites a list in place and keeps the rest of the line', () => {
-    const next = writeNameList(identity, 'skins', ['island', 'brutalism', 'fancy'])!;
+    const next = writeNameList(identity, ['island', 'brutalism', 'fancy'])!;
     expect(next).toContain("    skins: ['island', 'brutalism', 'fancy'] as string[],");
     expect(next).toContain("    skin: 'classic',");
     expect(next).toContain("costs $5 / $& month");
@@ -134,12 +131,12 @@ describe('identity.ts edits', () => {
   it('sets the default skin without touching skins', () => {
     const next = writeDefaultSkin(identity, 'island')!;
     expect(next).toContain("    skin: 'island',");
-    expect(readNameList(next, 'skins')).toEqual(['island', 'brutalism']);
+    expect(readNameList(next)).toEqual(['island', 'brutalism']);
   });
   it('adds a missing list after skin: for older identity files', () => {
     const old = "export const siteInfo = {\n    skin: 'island',\n};";
-    const next = writeNameList(old, 'skins', ['island'])!;
+    const next = writeNameList(old, ['island'])!;
     expect(next).toBe("export const siteInfo = {\n    skin: 'island',\n    skins: ['island'] as string[],\n};");
-    expect(writeNameList('const x = {};', 'skins', ['a'])).toBeNull();
+    expect(writeNameList('const x = {};', ['a'])).toBeNull();
   });
 });

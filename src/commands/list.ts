@@ -4,6 +4,7 @@ import type { ListOptions } from '../types.js';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { readFrontmatter } from '../utils/frontmatter.js';
+import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
 
 // Singular type → directory under src/content/
 const TYPE_DIRS: Record<string, string> = {
@@ -100,47 +101,6 @@ function loadType(root: string, type: string): FileEntry[] {
     .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 }
 
-function printSummary(root: string, draftsOnly: boolean): void {
-  const rows = TYPE_ORDER
-    .map(type => {
-      const files = loadType(root, type);
-      const drafts = files.filter(f => f.meta?.draft === true).length;
-      const visible = draftsOnly ? drafts : files.length;
-      return { type, total: files.length, drafts, visible };
-    })
-    .filter(r => r.visible > 0);
-
-  if (rows.length === 0) {
-    console.log(C.muted(draftsOnly ? 'No drafts found.' : 'No content found.'));
-    return;
-  }
-
-  console.log(C.accent(draftsOnly ? '\nDrafts\n' : '\nContent\n'));
-  console.log(C.dim('─'.repeat(60)));
-
-  const typeWidth = Math.max(...rows.map(r => r.type.length), 8);
-  for (const r of rows) {
-    const draftLabel = !draftsOnly && r.drafts > 0
-      ? C.warning(`  (${r.drafts} draft${r.drafts > 1 ? 's' : ''})`)
-      : '';
-    console.log(
-      `  ${C.accent(r.type.padEnd(typeWidth))}  ` +
-      `${C.text(String(r.visible).padStart(3))}${draftLabel}`
-    );
-  }
-
-  const totalVisible = rows.reduce((s, r) => s + r.visible, 0);
-  const totalDrafts = rows.reduce((s, r) => s + r.drafts, 0);
-  const draftSuffix = !draftsOnly && totalDrafts > 0
-    ? `, ${totalDrafts} draft${totalDrafts > 1 ? 's' : ''}`
-    : '';
-
-  console.log(C.muted(`\nTotal: ${totalVisible} item${totalVisible !== 1 ? 's' : ''}${draftSuffix}`));
-  console.log(C.muted(draftsOnly
-    ? 'Use `vg list <type> -d` to focus on one type.'
-    : 'Use `vg list <type>` to view items.'));
-}
-
 function formatDate(value: unknown): string {
   if (!value) return '';
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -152,10 +112,65 @@ function formatDate(value: unknown): string {
   return s;
 }
 
-function printDetail(root: string, type: string, draftsOnly: boolean): void {
-  const files = loadType(root, type)
-    .filter(f => draftsOnly ? f.meta?.draft === true : true);
+// ── Summary (`vg list`) ─────────────────────────────────────────────────────
 
+interface SummaryRow {
+  type: string;
+  dir: string;
+  total: number;
+  drafts: number;
+}
+
+function summaryRows(root: string, draftsOnly: boolean): SummaryRow[] {
+  return TYPE_ORDER
+    .map(type => {
+      const files = loadType(root, type);
+      return {
+        type,
+        dir: `src/content/${TYPE_DIRS[type]}`,
+        total: files.length,
+        drafts: files.filter(f => f.meta?.draft === true).length,
+      };
+    })
+    .filter(r => (draftsOnly ? r.drafts : r.total) > 0);
+}
+
+function printSummary(rows: SummaryRow[], draftsOnly: boolean): void {
+  if (rows.length === 0) {
+    console.log(C.muted(draftsOnly ? 'No drafts found.' : 'No content found.'));
+    return;
+  }
+
+  console.log(C.accent(draftsOnly ? '\nDrafts\n' : '\nContent\n'));
+  console.log(C.dim('─'.repeat(60)));
+
+  const typeWidth = Math.max(...rows.map(r => r.type.length), 8);
+  for (const r of rows) {
+    const visible = draftsOnly ? r.drafts : r.total;
+    const draftLabel = !draftsOnly && r.drafts > 0
+      ? C.warning(`  (${r.drafts} draft${r.drafts > 1 ? 's' : ''})`)
+      : '';
+    console.log(
+      `  ${C.accent(r.type.padEnd(typeWidth))}  ` +
+      `${C.text(String(visible).padStart(3))}${draftLabel}`
+    );
+  }
+
+  const totalVisible = rows.reduce((s, r) => s + (draftsOnly ? r.drafts : r.total), 0);
+  const totalDrafts = rows.reduce((s, r) => s + r.drafts, 0);
+  const draftSuffix = !draftsOnly && totalDrafts > 0
+    ? `, ${totalDrafts} draft${totalDrafts > 1 ? 's' : ''}`
+    : '';
+
+  console.log(C.muted(`\nTotal: ${totalVisible} item${totalVisible !== 1 ? 's' : ''}${draftSuffix}`));
+  console.log(C.muted(draftsOnly
+    ? 'Use `vg list <type> -d` to focus on one type.'
+    : 'Use `vg list <type>` to view items.'));
+}
+
+// ── Items (`vg list <type>`) ────────────────────────────────────────────────
+
+function printDetail(files: FileEntry[], type: string, draftsOnly: boolean): void {
   if (files.length === 0) {
     console.log(C.muted(draftsOnly
       ? `No drafts in ${type}.`
@@ -182,24 +197,42 @@ function printDetail(root: string, type: string, draftsOnly: boolean): void {
   });
 }
 
+function itemJson(root: string, f: FileEntry) {
+  return {
+    title: String(f.meta?.title || f.name),
+    path: sitePath(root, f.path),
+    date: formatDate(f.meta?.date ?? f.meta?.publishDate) || null,
+    draft: f.meta?.draft === true,
+    tags: Array.isArray(f.meta?.tags) ? f.meta.tags.map(String) : [],
+  };
+}
+
 export async function listCommand(type: string | undefined, options: ListOptions): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  const draftsOnly = !!options.drafts;
 
   if (!type) {
-    return printSummary(root, !!options.drafts);
+    const rows = summaryRows(root, draftsOnly);
+    if (options.json) {
+      return printJson({
+        draftsOnly,
+        types: rows,
+        total: rows.reduce((s, r) => s + (draftsOnly ? r.drafts : r.total), 0),
+        drafts: rows.reduce((s, r) => s + r.drafts, 0),
+      });
+    }
+    return printSummary(rows, draftsOnly);
   }
 
   const normalized = normalizeType(type);
   if (!normalized) {
-    console.log(C.error(`✗ Unknown type: ${type}`));
-    console.log(C.muted('Available: post, page, project, album, thought, moment'));
-    console.log(C.muted('Use `vg docs` for documentation books.'));
-    return;
+    return fail(`Unknown type: ${type}`, 'Available: post, page, project, album, thought, moment', 'Use `vg docs` for documentation books.');
   }
 
-  return printDetail(root, normalized, !!options.drafts);
+  const files = loadType(root, normalized).filter(f => draftsOnly ? f.meta?.draft === true : true);
+  if (options.json) {
+    return printJson({ type: normalized, draftsOnly, items: files.map(f => itemJson(root, f)) });
+  }
+  return printDetail(files, normalized, draftsOnly);
 }

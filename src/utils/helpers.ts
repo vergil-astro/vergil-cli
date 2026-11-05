@@ -16,9 +16,11 @@ export const C = {
 /**
  * Wrap text in an OSC 8 terminal hyperlink so the user can click (or
  * Cmd/Ctrl+click) to open the file in the system default app.
- * Terminals without OSC 8 support fall through to plain text.
+ * Terminals without OSC 8 support fall through to plain text; outside a
+ * terminal (pipes, files, agents) the escape codes are left out entirely.
  */
 export function link(text: string, absPath: string): string {
+  if (!process.stdout.isTTY) return text;
   const distro = process.env.WSL_DISTRO_NAME;
   const url = distro && absPath.startsWith('/')
     ? `file://wsl.localhost/${distro}${absPath}`
@@ -79,13 +81,16 @@ export function printHelp(): void {
   console.log(C.subtitle('Directives:'));
   console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)\n');
 
-  console.log(C.subtitle('Skins & Color Schemes:'));
+  console.log(C.subtitle('Skins:'));
   console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[#ref] or ./folder');
   console.log('  ' + C.accent('vg skin list') + '               List built-in, installed and enabled skins');
   console.log('  ' + C.accent('vg skin use') + ' <name>         Make a skin the default for new visitors');
   console.log('  ' + C.accent('vg skin update') + ' [name]      Re-fetch installed skins');
-  console.log('  ' + C.accent('vg skin remove') + ' <name>      Disable a skin and delete its folder');
-  console.log('  ' + C.accent('vg scheme') + ' add|list|update|remove   Same for color scheme packages\n');
+  console.log('  ' + C.accent('vg skin remove') + ' <name>      Disable a skin and delete its folder\n');
+
+  console.log(C.subtitle('For agents and scripts:'));
+  console.log('  ' + C.accent('--json') + '                     Machine-readable output for list, series, docs and help');
+  console.log('  ' + C.muted('Errors go to stderr with a non-zero exit code; nothing prompts outside a terminal.\n'));
 
   console.log(C.muted('Run `vg <command> --help` for more details'));
 }

@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
+import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
 
 function detectPackageManager(root: string): string {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
@@ -13,10 +14,7 @@ function detectPackageManager(root: string): string {
 
 export async function buildCommand(): Promise<void> {
   const root = getProjectRoot();
-  if (!root) {
-    console.log(C.error('✗ Not in a Vergil project.'));
-    return;
-  }
+  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
   const pm = detectPackageManager(root);
   console.log(C.accent('Building for production...'));
@@ -30,8 +28,7 @@ export async function buildCommand(): Promise<void> {
     } as unknown as Parameters<typeof execSync>[1]);
     console.log(C.success('✓ Build complete'));
     console.log(C.muted('  Output: dist/'));
-  } catch (e) {
-    console.log(C.error('✗ Build failed'));
-    process.exit(1);
+  } catch {
+    fail('Build failed', 'The build output above has the details.');
   }
 }

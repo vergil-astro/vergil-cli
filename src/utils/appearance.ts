@@ -1,13 +1,13 @@
 /**
- * Shared logic for `vg skin` and `vg scheme`.
+ * Logic behind `vg skin`.
  *
- * A Vergil site loads skins and color schemes by convention: a package lives in
- * `skins/<name>/` (or `schemes/<name>/`) at the site root and is enabled by listing
- * its name in `src/data/config/identity.ts`. These helpers fetch a package, keep only
- * the files a package is allowed to contain, validate its manifest against the site's
- * appearance contract, and edit the name lists in identity.ts.
+ * A Vergil site loads skins by convention: a skin lives in `skins/<name>/` at the site
+ * root and is enabled by listing its name in `src/data/config/identity.ts`. Color schemes
+ * beyond the built-in ones only come bundled in a skin; there are no standalone scheme
+ * packages. These helpers fetch a skin, keep only the files a skin is allowed to contain,
+ * validate its manifest against the site's appearance contract, and edit identity.ts.
  *
- * Packages are data + CSS only. The theme never executes anything from them, and the
+ * Skins are data + CSS only. The theme never executes anything from them, and the
  * installer never copies scripts into the site.
  */
 import { execFile } from 'child_process';
@@ -21,25 +21,14 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export type PackageKind = 'skin' | 'scheme';
-
-export interface KindInfo {
-  /** Folder at the site root */
-  dir: 'skins' | 'schemes';
-  /** Manifest file inside the package */
-  manifest: 'skin.json' | 'scheme.json';
-  /** CSS entry inside the package */
-  entry: 'skin.css' | 'scheme.css';
-  /** Name list in identity.ts */
-  field: 'skins' | 'schemes';
-  /** Official repos are vergil-astro/<prefix><name> */
-  repoPrefix: string;
-}
-
-export const KINDS: Record<PackageKind, KindInfo> = {
-  skin: { dir: 'skins', manifest: 'skin.json', entry: 'skin.css', field: 'skins', repoPrefix: 'vergil-skin-' },
-  scheme: { dir: 'schemes', manifest: 'scheme.json', entry: 'scheme.css', field: 'schemes', repoPrefix: 'vergil-scheme-' },
-};
+/** Folder at the site root */
+export const SKINS_DIR = 'skins';
+/** Manifest file inside a skin */
+export const MANIFEST = 'skin.json';
+/** CSS entry inside a skin */
+const ENTRY = 'skin.css';
+/** Official skins live in vergil-astro/vergil-skin-<name> */
+const REPO_PREFIX = 'vergil-skin-';
 
 /** Same rule as the theme: names end up in paths, CSS selectors and HTML attributes */
 export const NAME_RE = /^[a-z][a-z0-9-]{0,31}$/;
@@ -77,9 +66,9 @@ export type Source =
  * `owner/repo[#ref]`   → a GitHub repo, optionally at a tag/branch/commit
  * `./dir`, `/abs/dir`  → a local folder
  */
-export function parseSource(input: string, kind: PackageKind, cwd: string = process.cwd()): Source {
+export function parseSource(input: string, cwd: string = process.cwd()): Source {
   const value = input.trim();
-  if (!value) throw new Error(`Missing ${kind} source`);
+  if (!value) throw new Error('Missing skin source');
 
   if (value.startsWith('.') || value.startsWith('/') || value.startsWith('~') || /^[A-Za-z]:[\\/]/.test(value)) {
     const path = value.startsWith('~') ? join(homedir(), value.slice(1)) : resolve(cwd, value);
@@ -96,15 +85,15 @@ export function parseSource(input: string, kind: PackageKind, cwd: string = proc
   const parts = spec.split('/');
   if (parts.length === 1) {
     if (!NAME_RE.test(spec)) {
-      throw new Error(`"${spec}" is not a valid ${kind} name: use lowercase letters, digits and dashes, starting with a letter`);
+      throw new Error(`"${spec}" is not a valid skin name: use lowercase letters, digits and dashes, starting with a letter`);
     }
-    return { type: 'github', owner: OFFICIAL_OWNER, repo: KINDS[kind].repoPrefix + spec, ref };
+    return { type: 'github', owner: OFFICIAL_OWNER, repo: REPO_PREFIX + spec, ref };
   }
   if (parts.length === 2 && parts.every((p) => GITHUB_PART_RE.test(p) && p !== '.' && p !== '..')) {
     return { type: 'github', owner: parts[0], repo: parts[1], ref };
   }
   throw new Error(
-    `Can't read "${input}" as a ${kind} source. Use a name (island), a GitHub repo (owner/repo or owner/repo#tag), or a local folder (./my-${kind})`,
+    `Can't read "${input}" as a skin source. Use a name (island), a GitHub repo (owner/repo or owner/repo#tag), or a local folder (./my-skin)`,
   );
 }
 
@@ -114,11 +103,10 @@ export function describeSource(source: Source): string {
     : `${source.owner}/${source.repo}${source.ref ? `#${source.ref}` : ''}`;
 }
 
-/** Default install name: repo or folder name, minus the vergil-skin- / vergil-scheme- prefix */
-export function deriveName(source: Source, kind: PackageKind): string | null {
+/** Default install name: repo or folder name, minus the vergil-skin- prefix */
+export function deriveName(source: Source): string | null {
   let base = source.type === 'local' ? basename(source.path) : source.repo;
-  const prefix = KINDS[kind].repoPrefix;
-  if (base.startsWith(prefix)) base = base.slice(prefix.length);
+  if (base.startsWith(REPO_PREFIX)) base = base.slice(REPO_PREFIX.length);
   base = base.toLowerCase();
   return NAME_RE.test(base) ? base : null;
 }
@@ -215,11 +203,11 @@ export function scanFiles(dir: string): FileScan {
 // ── Manifest ─────────────────────────────────────────────────────────────
 
 /** Problems that would make the site build fail; the theme checks the same things at build time */
-export function validatePackage(dir: string, files: string[], kind: PackageKind, contract: number): string[] {
-  const { manifest, entry } = KINDS[kind];
+export function validatePackage(dir: string, files: string[], contract: number): string[] {
+  const manifest = MANIFEST;
   const problems: string[] = [];
   if (!files.includes(manifest)) return [`missing ${manifest}`];
-  if (!files.includes(entry)) problems.push(`missing ${entry}`);
+  if (!files.includes(ENTRY)) problems.push(`missing ${ENTRY}`);
 
   let data: unknown;
   try {
@@ -242,9 +230,7 @@ export function validatePackage(dir: string, files: string[], kind: PackageKind,
     }
   };
 
-  if (kind === 'scheme') {
-    checkScheme(m, manifest);
-  } else if (m.schemes !== undefined) {
+  if (m.schemes !== undefined) {
     if (!Array.isArray(m.schemes)) {
       problems.push(`${manifest}: schemes should be an array`);
     } else {
@@ -267,10 +253,10 @@ export function validatePackage(dir: string, files: string[], kind: PackageKind,
   return problems;
 }
 
-/** The package's manifest, or null if it's missing or unreadable */
-export function readManifest(dir: string, kind: PackageKind): Record<string, unknown> | null {
+/** The skin's manifest, or null if it's missing or unreadable */
+export function readManifest(dir: string): Record<string, unknown> | null {
   try {
-    const data = JSON.parse(readFileSync(join(dir, KINDS[kind].manifest), 'utf8'));
+    const data = JSON.parse(readFileSync(join(dir, MANIFEST), 'utf8'));
     return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
   } catch {
     return null;
@@ -284,9 +270,9 @@ export interface SourceRecord {
   installedAt: string;
 }
 
-/** Copy the allowed files into skins/<name>/ (or schemes/<name>/), replacing what's there */
-export function installFiles(root: string, kind: PackageKind, name: string, fromDir: string, files: string[], source: Source): string {
-  const target = packageDir(root, kind, name);
+/** Copy the allowed files into skins/<name>/, replacing what's there */
+export function installFiles(root: string, name: string, fromDir: string, files: string[], source: Source): string {
+  const target = packageDir(root, name);
   const staging = `${target}.vg-tmp-${process.pid}`;
   rmSync(staging, { recursive: true, force: true });
   for (const file of files) {
@@ -301,18 +287,18 @@ export function installFiles(root: string, kind: PackageKind, name: string, from
   return target;
 }
 
-/** skins/<name> or schemes/<name>, guaranteed to stay inside that folder */
-export function packageDir(root: string, kind: PackageKind, name: string): string {
-  if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a valid ${kind} name`);
-  const base = join(root, KINDS[kind].dir);
+/** skins/<name>, guaranteed to stay inside skins/ */
+export function packageDir(root: string, name: string): string {
+  if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a valid skin name`);
+  const base = join(root, SKINS_DIR);
   mkdirSync(base, { recursive: true });
   const dir = join(base, name);
   if (relative(base, dir) !== name) throw new Error(`Refusing to use ${dir}`);
   return dir;
 }
 
-export function installedNames(root: string, kind: PackageKind): string[] {
-  const base = join(root, KINDS[kind].dir);
+export function installedNames(root: string): string[] {
+  const base = join(root, SKINS_DIR);
   if (!existsSync(base)) return [];
   return readdirSync(base)
     .filter((name) => NAME_RE.test(name) && statSync(join(base, name)).isDirectory())
@@ -339,30 +325,28 @@ export function readContract(root: string): number | null {
 
 // ── identity.ts ──────────────────────────────────────────────────────────
 
-const listPattern = (field: string) => new RegExp(`^(\\s*)${field}:\\s*\\[([^\\]\\n]*)\\](.*)$`, 'm');
+const SKINS_PATTERN = /^(\s*)skins:\s*\[([^\]\n]*)\](.*)$/m;
 const SKIN_PATTERN = /^(\s*)skin:\s*(['"])([^'"\n]*)\2(.*)$/m;
 
-/** Names in `skins: [...]` / `schemes: [...]`; null if the field isn't there */
-export function readNameList(text: string, field: 'skins' | 'schemes'): string[] | null {
-  const match = text.match(listPattern(field));
+/** Names in `skins: [...]`; null if the field isn't there */
+export function readNameList(text: string): string[] | null {
+  const match = text.match(SKINS_PATTERN);
   if (!match) return null;
   return [...match[2].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
 }
 
-/** Rewrite the list in place, keeping indentation and anything after it (like `as string[],`) */
-export function writeNameList(text: string, field: 'skins' | 'schemes', names: string[]): string | null {
-  const pattern = listPattern(field);
-  const match = text.match(pattern);
+/** Rewrite `skins: [...]` in place, keeping indentation and anything after it (like `as string[],`) */
+export function writeNameList(text: string, names: string[]): string | null {
+  const match = text.match(SKINS_PATTERN);
   const items = names.map((n) => `'${n}'`).join(', ');
   // Function replacements, so a `$` in the kept text isn't read as a replacement pattern
-  if (match) return text.replace(pattern, () => `${match[1]}${field}: [${items}]${match[3]}`);
+  if (match) return text.replace(SKINS_PATTERN, () => `${match[1]}skins: [${items}]${match[3]}`);
 
-  // Older identity.ts without the field: add it right after `skin:` (or after `skins:` for schemes)
-  const anchor = field === 'skins' ? SKIN_PATTERN : listPattern('skins');
-  const anchorMatch = text.match(anchor);
+  // Older identity.ts without the field: add it right after `skin:`
+  const anchorMatch = text.match(SKIN_PATTERN);
   if (!anchorMatch) return null;
   const line = anchorMatch[0];
-  return text.replace(line, () => `${line}\n${anchorMatch[1]}${field}: [${items}] as string[],`);
+  return text.replace(line, () => `${line}\n${anchorMatch[1]}skins: [${items}] as string[],`);
 }
 
 export function readDefaultSkin(text: string): string | null {

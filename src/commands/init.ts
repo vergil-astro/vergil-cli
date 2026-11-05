@@ -1,9 +1,13 @@
-import { execSync, spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { execFileSync, spawn } from 'child_process';
+import { existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import ora from 'ora';
 import type { InitOptions } from '../types.js';
 import { C } from '../utils/helpers.js';
+import { fail } from '../utils/output.js';
+
+/** owner/repo on GitHub; anything else could smuggle extra arguments into git */
+const TEMPLATE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export async function initCommand(options: InitOptions): Promise<void> {
   const targetDir = process.cwd();
@@ -17,8 +21,12 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
   // Partial / unrelated project — prevent overwriting
   if (existsSync(join(targetDir, 'package.json'))) {
-    console.log(C.warning('⚠ Current directory already contains a project.'));
-    return;
+    return fail('Current directory already contains a project.', 'Run `vg init` in an empty folder.');
+  }
+
+  const template = options.template || 'vergil-astro/vergil-astro-theme';
+  if (!TEMPLATE_RE.test(template) || template.split('/').some(part => part === '.' || part === '..')) {
+    return fail(`--template must be a GitHub repo written as owner/repo: ${template}`);
   }
 
   const spinner = ora({
@@ -29,14 +37,10 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
   try {
     // Clone the theme
-    const template = options.template || 'vergil-astro/vergil-astro-theme';
-    execSync(
-      `git clone --depth 1 https://github.com/${template}.git .`,
-      { cwd: targetDir, stdio: 'ignore' }
-    );
+    execFileSync('git', ['clone', '--depth', '1', `https://github.com/${template}.git`, '.'], { cwd: targetDir, stdio: 'ignore' });
 
     // Remove .git
-    execSync('rm -rf .git', { cwd: targetDir, stdio: 'ignore' });
+    rmSync(join(targetDir, '.git'), { recursive: true, force: true });
 
     spinner.succeed(C.success('✓ Template cloned'));
 
@@ -49,7 +53,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       }).start();
 
       try {
-        execSync('pnpm install', { cwd: targetDir, stdio: 'ignore' });
+        execFileSync('pnpm', ['install'], { cwd: targetDir, stdio: 'ignore' });
         installSpinner.succeed(C.success('✓ Dependencies installed'));
       } catch {
         installSpinner.warn(C.warning('⚠ pnpm install failed, try running it manually'));
@@ -66,9 +70,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       });
 
       child.on('exit', (code: number | null) => {
-        if (code !== 0 && code !== null) {
-          console.log(C.error(`Server exited with code ${code}`));
-        }
+        if (code !== 0 && code !== null) fail(`Server exited with code ${code}`);
       });
     } else {
       printNextSteps();
@@ -76,9 +78,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
   } catch (e) {
     spinner.fail(C.error('Failed to initialize project'));
-    if (e instanceof Error) {
-      console.log(C.muted(e.message));
-    }
+    fail(e instanceof Error ? e.message : String(e));
   }
 }
 
