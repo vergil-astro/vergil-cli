@@ -27,7 +27,7 @@ export const SKINS_DIR = 'skins';
 export const MANIFEST = 'skin.json';
 /** CSS entry inside a skin */
 const ENTRY = 'skin.css';
-/** Official skins live in vergil-astro/vergil-skin-<name> */
+/** Standalone skin repos are usually named vergil-skin-<name>; the prefix is dropped from the install name */
 const REPO_PREFIX = 'vergil-skin-';
 
 /** Same rule as the theme: names end up in paths, CSS selectors and HTML attributes */
@@ -37,7 +37,12 @@ const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|var\(--[a-z0-9-]+\))$/;
 const GITHUB_PART_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 const REF_RE = /^[A-Za-z0-9._/-]{1,100}$/;
 
+/** Official and contributed skins live together in vergil-astro/vergil-skins, one folder each under skins/ */
 export const OFFICIAL_OWNER = 'vergil-astro';
+export const OFFICIAL_REPO = 'vergil-skins';
+const OFFICIAL_PATH = 'skins';
+/** Folder depth limit for owner/repo/path sources */
+const MAX_PATH_PARTS = 10;
 /** Where the installer records the source, so `update` knows where to fetch from */
 export const SOURCE_FILE = '.vg-source.json';
 export const IDENTITY_PATH = join('src', 'data', 'config', 'identity.ts');
@@ -59,12 +64,13 @@ const SKIPPED_DIRS = new Set(['node_modules']);
 
 export type Source =
   | { type: 'local'; path: string }
-  | { type: 'github'; owner: string; repo: string; ref?: string };
+  | { type: 'github'; owner: string; repo: string; path?: string; ref?: string };
 
 /**
- * `island`             → official repo vergil-astro/vergil-skin-island
- * `owner/repo[#ref]`   → a GitHub repo, optionally at a tag/branch/commit
- * `./dir`, `/abs/dir`  → a local folder
+ * `island`                  → skins/island in vergil-astro/vergil-skins
+ * `owner/repo[#ref]`        → a GitHub repo that is one skin, optionally at a tag/branch/commit
+ * `owner/repo/path[#ref]`   → a skin in a folder of a GitHub repo
+ * `./dir`, `/abs/dir`       → a local folder
  */
 export function parseSource(input: string, cwd: string = process.cwd()): Source {
   const value = input.trim();
@@ -87,25 +93,28 @@ export function parseSource(input: string, cwd: string = process.cwd()): Source 
     if (!NAME_RE.test(spec)) {
       throw new Error(`"${spec}" is not a valid skin name: use lowercase letters, digits and dashes, starting with a letter`);
     }
-    return { type: 'github', owner: OFFICIAL_OWNER, repo: REPO_PREFIX + spec, ref };
+    return { type: 'github', owner: OFFICIAL_OWNER, repo: OFFICIAL_REPO, path: `${OFFICIAL_PATH}/${spec}`, ref };
   }
-  if (parts.length === 2 && parts.every((p) => GITHUB_PART_RE.test(p) && p !== '.' && p !== '..')) {
-    return { type: 'github', owner: parts[0], repo: parts[1], ref };
+  if (parts.length >= 2 && parts.length <= 2 + MAX_PATH_PARTS && parts.every((p) => GITHUB_PART_RE.test(p) && p !== '.' && p !== '..')) {
+    const [owner, repo, ...rest] = parts;
+    return rest.length ? { type: 'github', owner, repo, path: rest.join('/'), ref } : { type: 'github', owner, repo, ref };
   }
   throw new Error(
-    `Can't read "${input}" as a skin source. Use a name (island), a GitHub repo (owner/repo or owner/repo#tag), or a local folder (./my-skin)`,
+    `Can't read "${input}" as a skin source. Use a name (island), a GitHub repo (owner/repo, owner/repo/folder, either with #tag), or a local folder (./my-skin)`,
   );
 }
 
 export function describeSource(source: Source): string {
   return source.type === 'local'
     ? source.path
-    : `${source.owner}/${source.repo}${source.ref ? `#${source.ref}` : ''}`;
+    : `${source.owner}/${source.repo}${source.path ? `/${source.path}` : ''}${source.ref ? `#${source.ref}` : ''}`;
 }
 
-/** Default install name: repo or folder name, minus the vergil-skin- prefix */
+/** Default install name: the folder name, or the repo name minus the vergil-skin- prefix */
 export function deriveName(source: Source): string | null {
-  let base = source.type === 'local' ? basename(source.path) : source.repo;
+  let base = source.type === 'local'
+    ? basename(source.path)
+    : source.path ? source.path.split('/').pop()! : source.repo;
   if (base.startsWith(REPO_PREFIX)) base = base.slice(REPO_PREFIX.length);
   base = base.toLowerCase();
   return NAME_RE.test(base) ? base : null;
@@ -135,7 +144,7 @@ export async function stageSource(source: Source): Promise<Staged> {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(res.status === 404
-        ? `GitHub repo ${describeSource(source)} not found, or that ref doesn't exist`
+        ? `GitHub repo ${source.owner}/${source.repo}${source.ref ? `#${source.ref}` : ''} not found, or that ref doesn't exist`
         : `Download failed: HTTP ${res.status} ${url}`);
     }
     const data = Buffer.from(await res.arrayBuffer());
@@ -156,7 +165,17 @@ export async function stageSource(source: Source): Promise<Staged> {
     const out = join(tmp, 'package');
     mkdirSync(out);
     await execFileAsync('tar', ['-xzf', archive, '-C', out, '--strip-components=1']);
-    return { dir: out, cleanup };
+    if (!source.path) return { dir: out, cleanup };
+
+    // Path parts were checked in parseSource and the archive has no links, so this stays inside `out`
+    const dir = join(out, ...source.path.split('/'));
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      const official = source.owner === OFFICIAL_OWNER && source.repo === OFFICIAL_REPO && source.path.startsWith(`${OFFICIAL_PATH}/`);
+      throw new Error(official
+        ? `There's no skin named "${basename(source.path)}" in ${OFFICIAL_OWNER}/${OFFICIAL_REPO}`
+        : `${describeSource(source)}: that folder doesn't exist in the repo`);
+    }
+    return { dir, cleanup };
   } catch (error) {
     cleanup();
     throw error;

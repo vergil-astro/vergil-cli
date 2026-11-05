@@ -173,7 +173,7 @@ const skinCmd = program
 
 skinCmd
   .command('add <source>')
-  .description('Install a skin: a name, a GitHub repo (owner/repo[#ref]) or a local folder')
+  .description('Install a skin: a name from vergil-astro/vergil-skins, a GitHub repo or folder in one (owner/repo[/folder][#ref]), or a local folder')
   .option('-n, --name <name>', 'Install under this name')
   .option('-f, --force', 'Replace an existing install')
   .option('--no-enable', "Don't add it to skins in identity.ts")

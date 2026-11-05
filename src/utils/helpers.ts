@@ -82,7 +82,7 @@ export function printHelp(): void {
   console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)\n');
 
   console.log(C.subtitle('Skins:'));
-  console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[#ref] or ./folder');
+  console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[/folder][#ref] or ./folder');
   console.log('  ' + C.accent('vg skin list') + '               List built-in, installed and enabled skins');
   console.log('  ' + C.accent('vg skin use') + ' <name>         Make a skin the default for new visitors');
   console.log('  ' + C.accent('vg skin update') + ' [name]      Re-fetch installed skins');

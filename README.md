@@ -148,19 +148,20 @@ AI writing lives in the [vergil-skills](https://github.com/vergil-astro/vergil-s
 A Vergil site loads skins like zsh plugins: a skin lives in `skins/<name>/` at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you. Color schemes beyond the built-in A–I and K only come bundled in a skin; there are no standalone scheme packages.
 
 ```bash
-vg skin add someone/vergil-skin-paper     # Install from GitHub and enable it
-vg skin add someone/vergil-skin-paper#v1.0  # ...at a tag, branch or commit
-vg skin add ./my-skin                     # Install from a local folder
-vg skin add <name>                        # Shorthand for vergil-astro/vergil-skin-<name>
+vg skin add island                        # Install skins/island from vergil-skins and enable it
+vg skin add island#v1.0                   # ...at a tag, branch or commit of vergil-skins
+vg skin add someone/vergil-skin-paper     # A GitHub repo that is one skin
+vg skin add someone/skins/paper           # A folder inside a GitHub repo
+vg skin add ./my-skin                     # A local folder
 vg skin list                              # Built-in, installed and enabled skins
 vg skin use paper                         # Make it the default for new visitors
 vg skin update [name]                     # Re-fetch from where it was installed
 vg skin remove paper                      # Disable it and delete its folder
 ```
 
-The official skins (`island`, `brutalism`) currently ship inside the theme repo's `skins/` folder; the `<name>` shorthand starts working once they're published as their own repos.
+Skins live in [vergil-skins](https://github.com/vergil-astro/vergil-skins), official and contributed alike, and a bare name installs `skins/<name>/` from there. To share a skin you made, open a pull request in that repo.
 
-**Options for `add`:** `-n, --name <name>` installs under another name (by default the repo or folder name, minus a `vergil-skin-` prefix); `-f, --force` replaces an existing install; `--no-enable` installs without touching `identity.ts`. `remove` asks for confirmation; pass `-y, --yes` in scripts.
+**Options for `add`:** `-n, --name <name>` installs under another name (by default the folder name, or the repo name minus a `vergil-skin-` prefix); `-f, --force` replaces an existing install; `--no-enable` installs without touching `identity.ts`. `remove` asks for confirmation; pass `-y, --yes` in scripts.
 
 **Installed skins are committed with your site.** `add` copies a snapshot of the files into `skins/<name>/`, without a nested `.git`, so CI builds have everything they need. The source is recorded in `skins/<name>/.vg-source.json`, which is what `update` reads.
 

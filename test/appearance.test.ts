@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  deriveName, installFiles, packageDir, parseSource, readDefaultSkin, readNameList,
+  deriveName, describeSource, installFiles, packageDir, parseSource, readDefaultSkin, readNameList,
   readSourceRecord, scanFiles, validatePackage, writeDefaultSkin, writeNameList,
 } from '../src/utils/appearance.js';
 
@@ -23,11 +23,16 @@ afterEach(() => {
 });
 
 describe('parseSource', () => {
-  it('maps a bare name to the official repo', () => {
-    expect(parseSource('island')).toEqual({ type: 'github', owner: 'vergil-astro', repo: 'vergil-skin-island', ref: undefined });
+  it('maps a bare name to its folder in vergil-skins', () => {
+    expect(parseSource('island')).toEqual({ type: 'github', owner: 'vergil-astro', repo: 'vergil-skins', path: 'skins/island', ref: undefined });
+    expect(parseSource('island#v1')).toMatchObject({ repo: 'vergil-skins', path: 'skins/island', ref: 'v1' });
   });
   it('reads owner/repo with an optional ref', () => {
     expect(parseSource('someone/fancy-skin#v1.2.0')).toEqual({ type: 'github', owner: 'someone', repo: 'fancy-skin', ref: 'v1.2.0' });
+  });
+  it('reads a folder inside a repo', () => {
+    expect(parseSource('someone/skins/paper#main')).toEqual({ type: 'github', owner: 'someone', repo: 'skins', path: 'paper', ref: 'main' });
+    expect(parseSource('someone/monorepo/packages/skins/paper')).toMatchObject({ repo: 'monorepo', path: 'packages/skins/paper' });
   });
   it('reads local folders', () => {
     expect(parseSource('./skins-src/x', '/site')).toEqual({ type: 'local', path: '/site/skins-src/x' });
@@ -35,16 +40,26 @@ describe('parseSource', () => {
   });
   it('rejects unsafe or malformed input', () => {
     expect(() => parseSource('Island')).toThrow(/not a valid skin name/);
-    expect(() => parseSource('a/b/c')).toThrow(/Can't read/);
     expect(() => parseSource('owner/..')).toThrow(/Can't read/);
+    expect(() => parseSource('owner/repo/../x')).toThrow(/Can't read/);
+    expect(() => parseSource('owner/repo/a/')).toThrow(/Can't read/);
     expect(() => parseSource('owner/repo#../x')).toThrow(/not a valid git ref/);
     expect(() => parseSource('owner/re po')).toThrow(/Can't read/);
     expect(() => parseSource('  ')).toThrow(/Missing/);
   });
 });
 
+describe('describeSource', () => {
+  it('includes the folder and ref', () => {
+    expect(describeSource(parseSource('island#v1'))).toBe('vergil-astro/vergil-skins/skins/island#v1');
+    expect(describeSource(parseSource('someone/fancy-skin'))).toBe('someone/fancy-skin');
+  });
+});
+
 describe('deriveName', () => {
-  it('strips the official prefix and lowercases', () => {
+  it('uses the folder name, or the repo name minus the vergil-skin- prefix, lowercased', () => {
+    expect(deriveName(parseSource('island'))).toBe('island');
+    expect(deriveName({ type: 'github', owner: 'o', repo: 'skins', path: 'a/paper' })).toBe('paper');
     expect(deriveName({ type: 'github', owner: 'o', repo: 'vergil-skin-island' })).toBe('island');
     expect(deriveName({ type: 'github', owner: 'o', repo: 'Fancy-Skin' })).toBe('fancy-skin');
     expect(deriveName({ type: 'local', path: '/x/brutalism' })).toBe('brutalism');
