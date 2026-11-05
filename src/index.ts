@@ -17,6 +17,7 @@ import { seriesListCommand, seriesShowCommand } from './commands/series.js';
 import { docsListCommand, docsShowCommand } from './commands/docs.js';
 import { directiveHelpCommand } from './commands/directive-help.js';
 import { skillInstallCommand, skillListCommand, skillUninstallCommand } from './commands/skill.js';
+import { addCommand, listCommand as appearanceListCommand, removeCommand, skinUseCommand, updateCommand } from './commands/skin.js';
 import type { ListOptions } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -172,6 +173,68 @@ skillCmd
   .option('-a, --ai <agent>', 'Target agent to uninstall from')
   .option('-g, --global', 'Uninstall from global config')
   .action(skillUninstallCommand);
+
+// -- Skin & color scheme packages --
+const skinCmd = program
+  .command('skin')
+  .description('Install and manage skins (skins/<name>/, enabled in identity.ts)');
+
+skinCmd
+  .command('add <source>')
+  .description('Install a skin: a name, a GitHub repo (owner/repo[#ref]) or a local folder')
+  .option('-n, --name <name>', 'Install under this name')
+  .option('-f, --force', 'Replace an existing install')
+  .option('--no-enable', "Don't add it to skins in identity.ts")
+  .action(addCommand('skin'));
+
+skinCmd
+  .command('list')
+  .description('List built-in, installed and enabled skins')
+  .action(appearanceListCommand('skin'));
+
+skinCmd
+  .command('use <name>')
+  .description('Make a skin the default for visitors who haven\'t picked one')
+  .action(skinUseCommand);
+
+skinCmd
+  .command('update [name]')
+  .description('Re-fetch installed skins from where they were installed from')
+  .action(updateCommand('skin'));
+
+skinCmd
+  .command('remove <name>')
+  .description('Disable a skin and delete its folder')
+  .option('-y, --yes', 'Skip the confirmation prompt')
+  .action(removeCommand('skin'));
+
+const schemeCmd = program
+  .command('scheme')
+  .description('Install and manage color scheme packages (schemes/<name>/, enabled in identity.ts)');
+
+schemeCmd
+  .command('add <source>')
+  .description('Install a color scheme: a name, a GitHub repo (owner/repo[#ref]) or a local folder')
+  .option('-n, --name <name>', 'Install under this name')
+  .option('-f, --force', 'Replace an existing install')
+  .option('--no-enable', "Don't add it to schemes in identity.ts")
+  .action(addCommand('scheme'));
+
+schemeCmd
+  .command('list')
+  .description('List built-in, installed and enabled color schemes')
+  .action(appearanceListCommand('scheme'));
+
+schemeCmd
+  .command('update [name]')
+  .description('Re-fetch installed color schemes from where they were installed from')
+  .action(updateCommand('scheme'));
+
+schemeCmd
+  .command('remove <name>')
+  .description('Disable a color scheme and delete its folder')
+  .option('-y, --yes', 'Skip the confirmation prompt')
+  .action(removeCommand('scheme'));
 
 // -- Help --
 program

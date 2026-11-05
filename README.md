@@ -145,6 +145,31 @@ vg skill list                             # List installed skills
 vg skill uninstall --ai claude           # Remove skill from an agent
 ```
 
+### Skins & Color Schemes
+
+A Vergil site loads skins and color schemes like zsh plugins: a package lives in `skins/<name>/` (or `schemes/<name>/`) at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you.
+
+```bash
+vg skin add someone/vergil-skin-paper     # Install from GitHub and enable it
+vg skin add someone/vergil-skin-paper#v1.0  # ...at a tag, branch or commit
+vg skin add ./my-skin                     # Install from a local folder
+vg skin add <name>                        # Shorthand for vergil-astro/vergil-skin-<name>
+vg skin list                              # Built-in, installed and enabled skins
+vg skin use paper                         # Make it the default for new visitors
+vg skin update [name]                     # Re-fetch from where it was installed
+vg skin remove paper                      # Disable it and delete its folder
+
+vg scheme add|list|update|remove          # The same for color scheme packages
+```
+
+The official skins (`island`, `brutalism`) currently ship inside the theme repo's `skins/` folder; the `<name>` shorthand starts working once they're published as their own repos.
+
+**Options for `add`:** `-n, --name <name>` installs under another name (by default the repo or folder name, minus a `vergil-skin-` / `vergil-scheme-` prefix); `-f, --force` replaces an existing install; `--no-enable` installs without touching `identity.ts`. `remove` asks for confirmation; pass `-y, --yes` in scripts.
+
+**Installed packages are committed with your site.** `add` copies a snapshot of the files into `skins/<name>/`, without a nested `.git`, so CI builds have everything they need. The source is recorded in `skins/<name>/.vg-source.json`, which is what `update` reads.
+
+**Packages are data and CSS only.** `add` copies `.json`, `.css`, `.md`, images, fonts and license files; scripts, configs and dotfiles are left out and listed. It refuses archives with links or paths that escape the folder, and checks the manifest against the site's appearance contract (`src/appearance/contract.json`) before installing, so a package that would break the build never lands. See the theme docs, *皮肤与配色接口*, for the package format.
+
 ### Help
 
 ```bash

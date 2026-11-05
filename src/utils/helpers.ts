@@ -82,5 +82,13 @@ export function printHelp(): void {
   console.log('  ' + C.accent('vg skill uninstall') + '         Remove skill from agents');
   console.log('  ' + C.accent('vg help [topic]') + '            Show directive help (e.g. callout, tabs)\n');
 
+  console.log(C.subtitle('Skins & Color Schemes:'));
+  console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[#ref] or ./folder');
+  console.log('  ' + C.accent('vg skin list') + '               List built-in, installed and enabled skins');
+  console.log('  ' + C.accent('vg skin use') + ' <name>         Make a skin the default for new visitors');
+  console.log('  ' + C.accent('vg skin update') + ' [name]      Re-fetch installed skins');
+  console.log('  ' + C.accent('vg skin remove') + ' <name>      Disable a skin and delete its folder');
+  console.log('  ' + C.accent('vg scheme') + ' add|list|update|remove   Same for color scheme packages\n');
+
   console.log(C.muted('Run `vg <command> --help` for more details'));
 }
