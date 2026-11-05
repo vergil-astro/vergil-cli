@@ -16,7 +16,6 @@ import { cleanCommand } from './commands/clean.js';
 import { seriesListCommand, seriesShowCommand } from './commands/series.js';
 import { docsListCommand, docsShowCommand } from './commands/docs.js';
 import { directiveHelpCommand } from './commands/directive-help.js';
-import { skillInstallCommand, skillListCommand, skillUninstallCommand } from './commands/skill.js';
 import { addCommand, listCommand as appearanceListCommand, removeCommand, skinUseCommand, updateCommand } from './commands/skin.js';
 import type { ListOptions } from './types.js';
 
@@ -146,33 +145,6 @@ docsCmd
     const parentOpts = this.parent?.opts() as ListOptions | undefined;
     return docsShowCommand(book, parentOpts?.drafts);
   });
-
-// -- Skill --
-const skillCmd = program
-  .command('skill')
-  .description('Manage AI agent skills for Vergil directives');
-
-skillCmd
-  .command('install')
-  .description('Install Vergil writing skill to detected AI agents')
-  .option('-a, --ai <agent>', 'Target agent: claude|codex|cursor|gemini|openclaw|all')
-  .option('-g, --global', 'Install to global config (~/)')
-  .option('-s, --source <source>', 'Source: npm|github|auto', 'auto')
-  .option('-f, --force', 'Overwrite existing installation')
-  .action(skillInstallCommand);
-
-skillCmd
-  .command('list')
-  .description('List installed skills')
-  .option('-g, --global', 'Show global installations')
-  .action(skillListCommand);
-
-skillCmd
-  .command('uninstall')
-  .description('Remove Vergil skill from agents')
-  .option('-a, --ai <agent>', 'Target agent to uninstall from')
-  .option('-g, --global', 'Uninstall from global config')
-  .action(skillUninstallCommand);
 
 // -- Skin & color scheme packages --
 const skinCmd = program

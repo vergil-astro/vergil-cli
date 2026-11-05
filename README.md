@@ -134,15 +134,13 @@ vg docs show guide -d                  # Same as `vg docs <book> -d` (alias)
 
 **How are series counted?** The same way the theme does it: a post's `series` field wins, otherwise a post sitting in a folder claimed by a series' `dir` belongs to that series. Series defined in `src/content/series/` show up even before they have posts.
 
-### AI Skill Management
+### AI Writing
 
-The writing skill ([vergil-writing-skills](https://github.com/vergil-astro/vergil-writing-skills)) drafts, typesets and enhances articles. It follows [kami](https://github.com/tw93/kami)'s writing rules; installing kami as well gives agents the full reference.
+AI writing lives in the [vergil-skills](https://github.com/vergil-astro/vergil-skills) agent plugin, not in `vg`. It drafts and typesets posts with Vergil directives and checks directive syntax after every edit:
 
-```bash
-vg skill install                          # Install writing skill to detected AI agents
-vg skill install --ai claude -g          # Install to a specific agent globally
-vg skill list                             # List installed skills
-vg skill uninstall --ai claude           # Remove skill from an agent
+```text
+/plugin marketplace add vergil-astro/vergil-skills
+/plugin install vergil@vergil-astro
 ```
 
 ### Skins & Color Schemes
@@ -175,7 +173,10 @@ The official skins (`island`, `brutalism`) currently ship inside the theme repo'
 ```bash
 vg help                                   # Show all available commands
 vg help directives                        # List all Markdown directives
+vg help callout                           # Syntax, attributes and an example for one directive
 ```
+
+Directive help reads `src/plugins/directives/schema.mjs` in your site, so it matches the theme version you run. Run it from your site folder.
 
 ## Content Types
 

@@ -76,11 +76,8 @@ export function printHelp(): void {
   console.log('  ' + C.accent('vg docs') + ' -d                  List all docs drafts');
   console.log('  ' + C.accent('vg docs') + ' <book>             Show a book as a chapter tree\n');
 
-  console.log(C.subtitle('AI Tools:'));
-  console.log('  ' + C.accent('vg skill install') + '           Install AI writing skill to agents');
-  console.log('  ' + C.accent('vg skill list') + '              List installed skills');
-  console.log('  ' + C.accent('vg skill uninstall') + '         Remove skill from agents');
-  console.log('  ' + C.accent('vg help [topic]') + '            Show directive help (e.g. callout, tabs)\n');
+  console.log(C.subtitle('Directives:'));
+  console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)\n');
 
   console.log(C.subtitle('Skins & Color Schemes:'));
   console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[#ref] or ./folder');
