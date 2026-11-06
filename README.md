@@ -145,7 +145,7 @@ AI writing lives in the [vergil-skills](https://github.com/vergil-astro/vergil-s
 
 ### Skins
 
-A Vergil site loads skins like zsh plugins: a skin lives in `skins/<name>/` at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you. Color schemes beyond the built-in A–I and K only come bundled in a skin; there are no standalone scheme packages.
+A Vergil site loads skins like zsh plugins: a skin lives in `skins/<name>/` at the site root, and is enabled by listing its name in `src/data/config/identity.ts`. `vg` does both steps for you. Each skin brings its own color schemes, and visitors pick from the current skin's schemes: the built-in A–I and K belong to the classic skin. There are no standalone scheme packages.
 
 ```bash
 vg skin add island                        # Install skins/island from vergil-skins and enable it

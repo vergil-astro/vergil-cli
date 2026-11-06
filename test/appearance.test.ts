@@ -99,10 +99,22 @@ describe('validatePackage', () => {
       'missing schemes/mint.css',
     ]);
   });
+  it('needs its own schemes, and a default from among them', () => {
+    expect(skin({ contract: 1, recommendedScheme: 'C' })).toEqual([
+      "skin.json: schemes needs at least one color scheme; visitors can only pick a skin's own schemes",
+      "skin.json: recommendedScheme should be one of the skin's own schemes",
+    ]);
+    const two = [{ id: 'mint', short: 'T', swatch: '#00aa88' }, { id: 'sea', short: 'T', swatch: '#0066cc' }];
+    expect(skin({ contract: 1, recommendedScheme: 'C', schemes: two }, { 'schemes/mint.css': '', 'schemes/sea.css': '' })).toEqual([
+      'skin.json schemes[1]: short "T" is already used by another scheme in this skin',
+      "skin.json: recommendedScheme should be one of the skin's own schemes (mint, sea)",
+    ]);
+  });
   it('needs the manifest and the CSS entry', () => {
     const dir = tempDir({ 'skin.css': '' });
     expect(validatePackage(dir, scanFiles(dir).files, 1)).toEqual(['missing skin.json']);
-    const dir2 = tempDir({ 'skin.json': JSON.stringify({ contract: 1 }) });
+    const scheme = { id: 'mint', short: 'T', swatch: '#00aa88' };
+    const dir2 = tempDir({ 'skin.json': JSON.stringify({ contract: 1, schemes: [scheme] }), 'schemes/mint.css': '' });
     expect(validatePackage(dir2, scanFiles(dir2).files, 1)).toEqual(['missing skin.css']);
   });
 });

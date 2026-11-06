@@ -2,8 +2,9 @@
  * Logic behind `vg skin`.
  *
  * A Vergil site loads skins by convention: a skin lives in `skins/<name>/` at the site
- * root and is enabled by listing its name in `src/data/config/identity.ts`. Color schemes
- * beyond the built-in ones only come bundled in a skin; there are no standalone scheme
+ * root and is enabled by listing its name in `src/data/config/identity.ts`. Every skin
+ * bundles at least one color scheme, and visitors can only pick a skin's own schemes
+ * (the built-in A–I and K belong to the classic skin); there are no standalone scheme
  * packages. These helpers fetch a skin, keep only the files a skin is allowed to contain,
  * validate its manifest against the site's appearance contract, and edit identity.ts.
  *
@@ -249,25 +250,32 @@ export function validatePackage(dir: string, files: string[], contract: number):
     }
   };
 
-  if (m.schemes !== undefined) {
-    if (!Array.isArray(m.schemes)) {
-      problems.push(`${manifest}: schemes should be an array`);
-    } else {
-      m.schemes.forEach((raw: unknown, i: number) => {
-        const at = `${manifest} schemes[${i}]`;
-        if (!raw || typeof raw !== 'object') {
-          problems.push(`${at} should be an object`);
-          return;
-        }
-        const scheme = raw as Record<string, unknown>;
-        if (typeof scheme.id !== 'string' || !NAME_RE.test(scheme.id)) {
-          problems.push(`${at}: id is not a valid name`);
-          return;
-        }
-        checkScheme(scheme, at);
-        if (!files.includes(`schemes/${scheme.id}.css`)) problems.push(`missing schemes/${scheme.id}.css`);
-      });
-    }
+  // Visitors can only pick a skin's own schemes, so a skin needs at least one
+  const ids: string[] = [];
+  const shorts: unknown[] = [];
+  if (!Array.isArray(m.schemes) || !m.schemes.length) {
+    problems.push(`${manifest}: schemes needs at least one color scheme; visitors can only pick a skin's own schemes`);
+  } else {
+    m.schemes.forEach((raw: unknown, i: number) => {
+      const at = `${manifest} schemes[${i}]`;
+      if (!raw || typeof raw !== 'object') {
+        problems.push(`${at} should be an object`);
+        return;
+      }
+      const scheme = raw as Record<string, unknown>;
+      if (typeof scheme.id !== 'string' || !NAME_RE.test(scheme.id)) {
+        problems.push(`${at}: id is not a valid name`);
+        return;
+      }
+      checkScheme(scheme, at);
+      if (shorts.includes(scheme.short)) problems.push(`${at}: short "${scheme.short}" is already used by another scheme in this skin`);
+      shorts.push(scheme.short);
+      ids.push(scheme.id);
+      if (!files.includes(`schemes/${scheme.id}.css`)) problems.push(`missing schemes/${scheme.id}.css`);
+    });
+  }
+  if (m.recommendedScheme !== undefined && (typeof m.recommendedScheme !== 'string' || !ids.includes(m.recommendedScheme))) {
+    problems.push(`${manifest}: recommendedScheme should be one of the skin's own schemes${ids.length ? ` (${ids.join(', ')})` : ''}`);
   }
   return problems;
 }

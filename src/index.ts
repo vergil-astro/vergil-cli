@@ -169,7 +169,7 @@ docsCmd
 // -- Skins --
 const skinCmd = program
   .command('skin')
-  .description('Install and manage skins (skins/<name>/, enabled in identity.ts). Extra color schemes come bundled in skins');
+  .description('Install and manage skins (skins/<name>/, enabled in identity.ts). Each skin brings its own color schemes');
 
 skinCmd
   .command('add <source>')
