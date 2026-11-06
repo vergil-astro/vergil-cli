@@ -19,6 +19,7 @@ import {
 import { homedir, tmpdir } from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { promisify } from 'util';
+import { resolveThemeFile } from './theme.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,7 +48,8 @@ const MAX_PATH_PARTS = 10;
 /** Where the installer records the source, so `update` knows where to fetch from */
 export const SOURCE_FILE = '.vg-source.json';
 export const IDENTITY_PATH = join('src', 'data', 'config', 'identity.ts');
-export const CONTRACT_PATH = join('src', 'appearance', 'contract.json');
+/** The appearance contract inside the theme (relative to the theme's src/, see resolveThemeFile) */
+export const CONTRACT_PATH = 'appearance/contract.json';
 
 const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
 const MAX_FILES = 500;
@@ -342,8 +344,10 @@ export function readSourceRecord(dir: string): SourceRecord | null {
 }
 
 export function readContract(root: string): number | null {
+  const file = resolveThemeFile(root, CONTRACT_PATH);
+  if (!file) return null;
   try {
-    const version = JSON.parse(readFileSync(join(root, CONTRACT_PATH), 'utf8')).version;
+    const version = JSON.parse(readFileSync(file, 'utf8')).version;
     return typeof version === 'number' ? version : null;
   } catch {
     return null;

@@ -1,6 +1,6 @@
 {
   "name": "@vergil-astro/vergil-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
@@ -14,6 +14,7 @@
   "files": [
     "bin/",
     "dist/",
+    "tools/",
     "README.md"
   ],
   "scripts": {
@@ -35,26 +36,25 @@
   "author": "Rosh <dogegotout@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=18.14.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
-    "commander": "^12.1.0",
-    "fs-extra": "^11.3.5",
-    "globby": "^14.1.0",
+    "chalk": "^6.0.1",
+    "commander": "^15.0.0",
     "gray-matter": "^4.0.3",
-    "inquirer": "^9.3.8",
-    "mustache": "^4.2.0",
-    "ora": "^8.2.0"
+    "inquirer": "^14.2.5",
+    "ora": "^10.0.0",
+    "remark": "^15.0.1",
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "unist-util-visit": "^5.2.0"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
-    "@types/inquirer": "^9.0.9",
-    "@types/mustache": "^4.2.6",
-    "@types/node": "^22.19.18",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "vitest": "^3.0.0"
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
   },
   "repository": {
     "type": "git",

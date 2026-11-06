@@ -37,7 +37,7 @@ function requireSite(): Site | null {
   }
   const contract = readContract(root);
   if (contract === null) {
-    fail("This site's Vergil version doesn't support skin packages yet", `${CONTRACT_PATH} is missing. Sync the theme first.`);
+    fail("This site's Vergil version doesn't support skin packages yet", `The theme has no ${CONTRACT_PATH}. Update the theme first.`);
     return null;
   }
   return { root, contract };
@@ -271,7 +271,14 @@ export async function skinRemoveCommand(name: string, options: RemoveOptions): P
       return;
     }
     const what = isInstalled ? `Delete ${SKINS_DIR}/${name}/ and disable it` : `Remove "${name}" from skins`;
-    const { confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message: `${what}?`, default: false }]);
+    let confirmed = false;
+    try {
+      ({ confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message: `${what}?`, default: false }]));
+    } catch (err) {
+      // Ctrl+C or Ctrl+D closes the prompt: that's a "no", not a crash with a stack trace
+      if ((err as Error)?.name !== 'ExitPromptError') throw err;
+      console.log(C.muted('\nCancelled.'));
+    }
     if (!confirmed) return;
   }
 

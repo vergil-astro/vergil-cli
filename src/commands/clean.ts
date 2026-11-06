@@ -8,7 +8,8 @@ export async function cleanCommand(): Promise<void> {
   const root = getProjectRoot();
   if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
 
-  const dirsToClean = ['dist', '.astro', 'node_modules/.vite'];
+  // node_modules/.astro is Astro's own cache, including the rendered Markdown it reuses between builds
+  const dirsToClean = ['dist', '.astro', 'node_modules/.astro', 'node_modules/.vite'];
 
   for (const dir of dirsToClean) {
     const fullPath = join(root, dir);

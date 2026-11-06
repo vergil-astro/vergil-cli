@@ -44,6 +44,7 @@ export function printHelp(): void {
   console.log(C.accent('Usage:') + ' vg <command> [options]\n');
 
   console.log(C.subtitle('Initialize:'));
+  console.log('  ' + C.accent('vg init my-site') + '            Create a site in a new folder my-site');
   console.log('  ' + C.accent('vg init') + '                    Initialize Vergil in current directory');
   console.log('  ' + C.accent('vg init --template <name>') + '   Clone from a specific GitHub repo (default: vergil-astro/vergil-astro-theme)\n');
 
@@ -78,8 +79,19 @@ export function printHelp(): void {
   console.log('  ' + C.accent('vg docs') + ' -d                  List all docs drafts');
   console.log('  ' + C.accent('vg docs') + ' <book>             Show a book as a chapter tree\n');
 
+  console.log(C.subtitle('Images:'));
+  console.log('  ' + C.accent('vg images organize') + '         Move post images under src/assets/img/ and use @img/ (runs before build)');
+  console.log('  ' + C.accent('vg images check') + '            Report image references that point to missing files');
+  console.log('  ' + C.accent('vg images expand') + '           Rewrite @img/ references as relative paths\n');
+
   console.log(C.subtitle('Directives:'));
-  console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)\n');
+  console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)');
+  console.log('  ' + C.accent('vg directives check') + ' [files] Check directive syntax in src/content or the given files');
+  console.log('  ' + C.accent('vg directives ref') + ' [names]   Print the directive reference as Markdown\n');
+
+  console.log(C.subtitle('Starting out and upgrading:'));
+  console.log('  ' + C.accent('vg reset') + '                   Clear the sample content (--all also removes the Vergil guide, --dry previews)');
+  console.log('  ' + C.accent('vg upgrade') + '                 Upgrade the theme, run its migrations, compare the site before and after (--dry-run previews)\n');
 
   console.log(C.subtitle('Skins:'));
   console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[/folder][#ref] or ./folder');

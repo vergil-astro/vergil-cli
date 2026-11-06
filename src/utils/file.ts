@@ -70,10 +70,12 @@ export function listMarkdownFiles(dir: string): string[] {
 }
 
 /**
- * Format date as YYYY-MM-DD
+ * Format date as YYYY-MM-DD in the writer's own time zone. The UTC date (toISOString) would put
+ * a post written in Beijing before 8 a.m. on the previous day.
  */
 export function formatDate(date: Date = new Date()): string {
-  return date.toISOString().split('T')[0];
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 /**

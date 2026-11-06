@@ -17,6 +17,8 @@ import { seriesListCommand, seriesShowCommand } from './commands/series.js';
 import { docsListCommand, docsShowCommand } from './commands/docs.js';
 import { directiveHelpCommand } from './commands/directive-help.js';
 import { skinAddCommand, skinListCommand, skinRemoveCommand, skinUpdateCommand, skinUseCommand } from './commands/skin.js';
+import { runTool } from './commands/tools.js';
+import { upgradeCommand } from './commands/upgrade.js';
 import type { JsonOptions, ListOptions } from './types.js';
 import { stdoutIsTTY } from './utils/output.js';
 
@@ -34,9 +36,12 @@ program
 
 // -- Initialize --
 program
-  .command('init')
-  .description('Initialize a Vergil project in the current directory')
-  .option('-t, --template <name>', 'GitHub repo to clone (default: vergil-astro/vergil-astro-theme)', 'vergil-astro/vergil-astro-theme')
+  .command('init [dir]')
+  .description('Create a Vergil site from the theme\'s starter, in a new folder <dir> or the current directory')
+  .option('-t, --template <name>', 'GitHub repo of the theme (default: vergil-astro/vergil-astro-theme)', 'vergil-astro/vergil-astro-theme')
+  .option('-r, --ref <ref>', 'Tag, branch or commit of the theme repo (default: the latest release)')
+  .option('--from <dir>', 'Use a local checkout of the theme repo instead of downloading it')
+  .option('--theme <spec>', 'Version spec of @vergil-astro/theme to depend on (default: ^ the version of that release)')
   .option('--skip-install', 'Skip dependency installation')
   .option('--skip-serve', 'Skip starting dev server after init')
   .action(initCommand);
@@ -199,6 +204,56 @@ skinCmd
   .description('Disable a skin and delete its folder')
   .option('-y, --yes', 'Skip the confirmation prompt')
   .action(skinRemoveCommand);
+
+// -- Content tools --
+const imagesCmd = program
+  .command('images')
+  .description('Tidy and check the images your posts use (src/assets/img/, referenced as @img/)');
+
+imagesCmd
+  .command('organize')
+  .description('Move each post\'s images under src/assets/img/ and rewrite the references as @img/')
+  .action(() => runTool('organize-images'));
+
+imagesCmd
+  .command('check')
+  .description('Report image references that point to missing files')
+  .action(() => runTool('check-images'));
+
+imagesCmd
+  .command('expand')
+  .description('Rewrite @img/ references as plain relative paths, e.g. for editors that cannot resolve @img/')
+  .action(() => runTool('expand-images'));
+
+const directivesCmd = program
+  .command('directives')
+  .description('Check and look up content directives, using the rules of the theme this site runs');
+
+directivesCmd
+  .command('check [files...]')
+  .description('Check directive syntax in src/content, or only in the given files')
+  .action((files: string[] = []) => runTool('check-directives', files));
+
+directivesCmd
+  .command('ref [names...]')
+  .description('Print the directive reference as Markdown, or only the named directives')
+  .action((names: string[] = []) => runTool('directive-ref', names));
+
+program
+  .command('reset')
+  .description('Clear the sample content for a clean start; keeps the Vergil guide unless --all')
+  .option('--all', 'Also remove the Vergil guide docs')
+  .option('--dry', 'Only print what would change')
+  .action((options: { all?: boolean; dry?: boolean }) => runTool('reset-content', [...(options.all ? ['--all'] : []), ...(options.dry ? ['--dry'] : [])]));
+
+// -- Upgrade --
+program
+  .command('upgrade')
+  .description('Upgrade the theme package on a new branch, run the migrations it needs, and compare the site before and after')
+  .option('--to <version>', 'Upgrade to this version instead of the latest')
+  .option('--dry-run', 'Only print what would happen')
+  .option('--skip-check', 'Skip building and comparing the site before and after')
+  .action(upgradeCommand);
 
 // -- Help --
 program

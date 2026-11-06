@@ -1,17 +1,17 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { pathToFileURL } from 'url';
+import { resolveThemeFile } from '../utils/theme.js';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { fail, printJson } from '../utils/output.js';
 import type { JsonOptions } from '../types.js';
 
 /**
- * Directive help reads the site's own schema (src/plugins/directives/schema.mjs),
+ * Directive help reads the schema of the theme the site runs (plugins/directives/schema.mjs
+ * in @vergil-astro/theme, or in src/ for older template-style sites),
  * so it always matches the theme version the site runs. The same schema drives
- * the theme's `pnpm directives:ref` and `pnpm directives:check`.
+ * `vg directives ref` and `vg directives check`.
  */
-const SCHEMA_PATH = join('src', 'plugins', 'directives', 'schema.mjs');
+const SCHEMA_PATH = 'plugins/directives/schema.mjs';
 
 interface AttrSpec {
   type: 'string' | 'enum' | 'list' | 'boolean' | 'number' | 'color';
@@ -62,9 +62,9 @@ async function loadSchema(): Promise<DirectiveSchema | null> {
     fail('Not inside a Vergil site', 'Directive help reads the site\'s own directive list. Run it from your site folder.');
     return null;
   }
-  const file = join(root, SCHEMA_PATH);
-  if (!existsSync(file)) {
-    fail(`No directive list at ${SCHEMA_PATH}`, 'This site runs an older theme. Update the theme to get directive help.');
+  const file = resolveThemeFile(root, SCHEMA_PATH);
+  if (!file) {
+    fail('No directive list in this site\'s theme', 'This site runs an older theme. Update the theme to get directive help.');
     return null;
   }
   return (await import(pathToFileURL(file).href)) as DirectiveSchema;

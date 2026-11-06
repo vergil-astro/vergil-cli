@@ -1,0 +1,4 @@
+# Dependency install scripts never run; building and testing vg doesn't need them. Keep this file
+# in the repo: since pnpm 11, an install script nobody declared makes `pnpm install` fail.
+allowBuilds:
+  esbuild: false

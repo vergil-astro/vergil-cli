@@ -15,6 +15,9 @@ export interface ContentMeta {
 // ── CLI Options ──
 export interface InitOptions {
   template?: string;
+  ref?: string;
+  from?: string;
+  theme?: string;
   skipInstall?: boolean;
   skipServe?: boolean;
 }

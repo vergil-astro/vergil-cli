@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
@@ -111,6 +111,48 @@ describe('failures', () => {
     temps.push(dir);
     expect(vg(dir, 'init', '-t', 'a/b;touch pwned', '--skip-install', '--skip-serve').code).toBe(1);
     expect(vg(site(), 'serve', '--port', '1;echo hi').code).toBe(1);
+  });
+});
+
+describe('init', () => {
+  /** A theme checkout as vg init reads it: the package, its pnpm settings and starter/ */
+  function themeRepo(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'vg-theme-'));
+    temps.push(dir);
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: '@vergil-astro/theme', version: '1.2.3' }),
+      'pnpm-workspace.yaml': 'packages:\n  - starter\n\n# no install scripts\nallowBuilds:\n  sharp: false\n',
+      'starter/package.json': JSON.stringify({ name: 'vergil-starter', dependencies: { '@vergil-astro/theme': 'workspace:*' } }),
+      'starter/astro.config.mjs': 'export default {}\n',
+      'starter/src/content/blog/hello.md': '---\ntitle: Hello\n---\n',
+    };
+    for (const [rel, text] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true });
+      writeFileSync(join(dir, rel), text);
+    }
+    return dir;
+  }
+
+  it('creates the site in a new folder named after it', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'vg-empty-'));
+    temps.push(cwd);
+    const r = vg(cwd, 'init', 'my-site', '--from', themeRepo(), '--skip-install', '--skip-serve');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/cd my-site/);
+    const pkg = JSON.parse(readFileSync(join(cwd, 'my-site', 'package.json'), 'utf8'));
+    expect(pkg.name).toBe('my-site');
+    expect(pkg.dependencies['@vergil-astro/theme']).toBe('^1.2.3');
+    expect(readFileSync(join(cwd, 'my-site', 'pnpm-workspace.yaml'), 'utf8')).toBe('# no install scripts\nallowBuilds:\n  sharp: false\n');
+    expect(readFileSync(join(cwd, 'my-site', 'src/content/blog/hello.md'), 'utf8')).toMatch(/Hello/);
+  });
+
+  it('keeps the new folder inside the current directory', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'vg-empty-'));
+    temps.push(cwd);
+    const r = vg(cwd, 'init', '../escaped-site', '--from', themeRepo(), '--skip-install', '--skip-serve');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/inside the current directory/);
+    expect(existsSync(join(cwd, '..', 'escaped-site'))).toBe(false);
   });
 });
 

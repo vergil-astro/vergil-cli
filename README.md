@@ -18,8 +18,9 @@ vg --help
 ## Quick Start
 
 ```bash
-# 1. Initialize a Vergil project
-vg init
+# 1. Create a Vergil site in a new folder
+vg init my-site
+cd my-site
 
 # 2. Start dev server
 vg serve
@@ -33,6 +34,7 @@ vg new post "Hello Vergil"
 ### Initialize
 
 ```bash
+vg init my-site                      # Create a site in a new folder my-site
 vg init                              # Initialize in current directory
 vg init --template <name>            # Clone from a specific GitHub repo (default: vergil-astro/vergil-astro-theme)
 vg init --skip-install               # Skip dependency installation
@@ -165,7 +167,7 @@ Skins live in [vergil-skins](https://github.com/vergil-astro/vergil-skins), offi
 
 **Installed skins are committed with your site.** `add` copies a snapshot of the files into `skins/<name>/`, without a nested `.git`, so CI builds have everything they need. The source is recorded in `skins/<name>/.vg-source.json`, which is what `update` reads.
 
-**Packages are data and CSS only.** `add` copies `.json`, `.css`, `.md`, images, fonts and license files; scripts, configs and dotfiles are left out and listed. It refuses archives with links or paths that escape the folder, and checks the manifest against the site's appearance contract (`src/appearance/contract.json`) before installing, so a package that would break the build never lands. See the theme docs, *皮肤与配色接口*, for the package format.
+**Packages are data and CSS only.** `add` copies `.json`, `.css`, `.md`, images, fonts and license files; scripts, configs and dotfiles are left out and listed. It refuses archives with links or paths that escape the folder, and checks the manifest against the appearance contract of the theme the site runs (`appearance/contract.json` in the theme) before installing, so a package that would break the build never lands. See the theme docs, *皮肤与配色接口*, for the package format.
 
 ### Help
 
@@ -175,7 +177,40 @@ vg help directives                        # List all Markdown directives
 vg help callout                           # Syntax, attributes and an example for one directive
 ```
 
-Directive help reads `src/plugins/directives/schema.mjs` in your site, so it matches the theme version you run. Run it from your site folder.
+Directive help reads the directive rules of the theme your site runs (from the installed `@vergil-astro/theme` package, or from `src/` in older sites that carry the theme source), so it matches the theme version you run. Run it from your site folder.
+
+### Images and Directives
+
+```bash
+vg images organize                        # Move post images under src/assets/img/ and reference them as @img/
+vg images check                           # Report image references that point to missing files
+vg images expand                          # Rewrite @img/ references as relative paths
+vg directives check                       # Check directive syntax in every Markdown file under src/content
+vg directives check src/content/blog/a.md # ...or only in the given files
+vg directives ref                         # The full directive reference as Markdown
+vg directives ref callout tabs            # ...or only some directives
+```
+
+A site's `build` script runs `vg images organize` before `astro build`, so a post can reference images next to it and they still end up in one place. Like `vg help`, the directive commands read the rules of the theme the site runs.
+
+### Starting Out
+
+```bash
+vg reset --dry                            # Preview what would be cleared
+vg reset                                  # Clear the sample posts, docs, albums and placeholder config
+vg reset --all                            # ...and the Vergil guide docs too
+```
+
+### Upgrading the Theme
+
+```bash
+vg upgrade --dry-run                      # Show the plan: versions, migrations, steps
+vg upgrade                                # Upgrade @vergil-astro/theme to the latest release
+vg upgrade --to 1.2.0                     # Upgrade to a given version
+vg upgrade --skip-check                   # Skip the before/after build comparison
+```
+
+The site holds only content and config, so an upgrade is a package update. `vg upgrade` works on a new git branch `vergil-upgrade/<version>`. It builds the site, updates the package with the site's package manager, runs the migrations of any breaking release in between, builds again and lists the pages that changed. On pnpm sites it also declares the install scripts the new version brings (`allowBuilds` in `pnpm-workspace.yaml`), leaving the site's own choices as they are. To undo: `git switch - && git branch -D vergil-upgrade/<version>`.
 
 ## For Agents and Scripts
 
@@ -227,8 +262,8 @@ The theme's own docs (`/docs/vergil-guide/` on your site) cover each one.
 
 ## Requirements
 
-- Node.js >= 18.14.0 for `vg` itself
-- The theme needs Node.js 22 and pnpm
+- Node.js 24 or later (the newest LTS is recommended), for `vg` and for Vergil sites
+- pnpm for Vergil sites; `vg init` also needs Git
 
 ## License
 

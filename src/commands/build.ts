@@ -5,7 +5,7 @@ import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
 
-function detectPackageManager(root: string): string {
+export function detectPackageManager(root: string): string {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
   if (existsSync(join(root, 'yarn.lock'))) return 'yarn';
   if (existsSync(join(root, 'package-lock.json'))) return 'npm';

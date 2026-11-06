@@ -1,4 +1,33 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
+/**
+ * Like hexo-cli: inside a site whose theme ships its own vg (the theme package depends on this CLI),
+ * hand the command to that one, so the commands always match the theme version the site runs.
+ * A globally installed vg then only matters outside a site, e.g. for `vg init`.
+ */
+function siteThemeBin(start) {
+  let dir = start;
+  for (;;) {
+    const bin = join(dir, 'node_modules', '@vergil-astro', 'theme', 'bin', 'vg.mjs');
+    if (existsSync(bin)) return bin;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+const local = process.env.VERGIL_CLI_LOCAL ? null : siteThemeBin(process.cwd());
+if (local) {
+  const result = spawnSync(process.execPath, [local, ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, VERGIL_CLI_LOCAL: '1' },
+  });
+  process.exit(result.status ?? 1);
+}
+
 import('../dist/index.js').catch((err) => {
   console.error('Failed to start Vergil CLI:', err.message);
   process.exit(1);
