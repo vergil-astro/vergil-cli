@@ -4,6 +4,11 @@
 
 Create blog posts, project showcases, photo albums, and manage your entire Vergil site from the terminal.
 
+## Requirements
+
+- Node.js 24 or later (the newest LTS is recommended), for `vg` and for Vergil sites
+- pnpm for Vergil sites; `vg init` also needs Git
+
 ## Install
 
 ```bash
@@ -17,17 +22,35 @@ vg --help
 
 ## Quick Start
 
+From an empty folder to a deployed site. Every command is documented in detail under [Commands](#commands).
+
 ```bash
-# 1. Create a Vergil site in a new folder
+# 1. Create a site: demo content included, dependencies installed, dev server started.
+#    Open the printed address (usually http://localhost:4321/) and look around.
+#    Later, restart the dev server with `vg serve`.
 vg init my-site
 cd my-site
 
-# 2. Start dev server
-vg serve
-
-# 3. Write your first post
+# 2. Write your first post — the new file's path is printed; edit it and save
 vg new post "Hello Vergil"
+
+# 3. Make it yours: site title, description and avatar in src/data/config/identity.ts,
+#    production URL in the `website` field of src/data/site-config.ts.
+#    Each option is covered in the built-in docs at /docs/vergil-guide/.
+
+# 4. Optional: clear the demo content once you're ready (keeps the Vergil guide docs)
+vg reset --dry                           # Preview what would be cleared
+vg reset
+
+# 5. Build locally to catch config errors before deploying
+vg build
+
+# 6. Deploy — needs the target platform set up first (a git remote for github,
+#    the Vercel/Netlify CLI for vercel/netlify)
+vg deploy -t vercel                      # or github | netlify
 ```
+
+After going live, make sure `website` in `src/data/site-config.ts` is your real domain, redeploy, and check that `/rss.xml` and `/sitemap-index.xml` use it.
 
 ## Commands
 
@@ -214,7 +237,7 @@ The site holds only content and config, so an upgrade is a package update. `vg u
 
 ## For Agents and Scripts
 
-vg works the same in a terminal and in a pipe, apart from things only a person needs:
+vg works the same in a terminal and in a pipe, apart from things only a person needs. To take a site from scratch to deployment, run the [Quick Start](#quick-start) steps in order; the full option reference is under [Commands](#commands):
 
 - `--json` on `list`, `series`, `docs` and `help` prints one JSON document to stdout and nothing else. Paths are relative to the site root.
 - Errors and warnings go to stderr, and a failed command exits with 1.
@@ -258,12 +281,9 @@ Site settings live in `src/data/config/`, one file per area:
 - `features.ts` — comments, sidebar and other switches
 - `fonts.ts`, `links.ts`, `welcome.ts`, `notice.ts`, `analytics.ts`
 
+The production URL is the `website` field in `src/data/site-config.ts`: set it to your real domain before deploying, or RSS and sitemap links point at the placeholder domain.
+
 The theme's own docs (`/docs/vergil-guide/` on your site) cover each one.
-
-## Requirements
-
-- Node.js 24 or later (the newest LTS is recommended), for `vg` and for Vergil sites
-- pnpm for Vergil sites; `vg init` also needs Git
 
 ## License
 
