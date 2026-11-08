@@ -11,13 +11,24 @@ const NO_PROMPT_ARGS = new Set(['--json', '--help', '-h', '--version', '-v']);
 
 const otherLang = (lang: Lang): Lang => (lang === 'zh' ? 'en' : 'zh');
 
+/** CI services set CI (true, 1, or a service name); an explicit false or 0 means not CI */
+function isCI(env: NodeJS.ProcessEnv): boolean {
+  const value = env.CI?.trim().toLowerCase();
+  return Boolean(value) && value !== 'false' && value !== '0';
+}
+
 /**
- * Ask for the language the first time vg runs in a terminal: a person is there to answer, no
- * language is saved yet and VG_LANG doesn't pick one. `vg lang` itself is the explicit way to
- * set it, so it never asks.
+ * Ask for the language the first time a person runs vg in a terminal: no language is saved yet
+ * and VG_LANG doesn't pick one. `vg lang` itself is the explicit way to set it, so it never asks.
+ *
+ * Never ask when vg runs as part of something automated, even if a terminal is attached: a
+ * package script (`pnpm build` runs `vg images organize`) or a CI job. Hosting platforms such as
+ * EdgeOne Pages give their build a terminal, and a question there waits forever and stalls the
+ * deploy. Those runs take the language from the system locale, or zh.
  */
 export function shouldAskLanguage(args: string[], env: NodeJS.ProcessEnv = process.env, interactive = canPrompt): boolean {
   if (!interactive || env.VG_LANG || savedLang(env)) return false;
+  if (env.npm_lifecycle_event || isCI(env)) return false;
   if (args[0] === 'lang') return false;
   return !args.some((arg) => NO_PROMPT_ARGS.has(arg));
 }
@@ -96,9 +107,12 @@ export function langCommand(value?: string): void {
   if (value === undefined) {
     const { lang, source } = resolveLang();
     console.log(t('lang.current', { name: langName(lang), code: lang }));
-    const from = source === 'env'
-      ? t('lang.source.env')
-      : source === 'config' ? t('lang.savedIn', { path: configFile() }) : t('lang.source.default');
+    const from = {
+      env: () => t('lang.source.env'),
+      config: () => t('lang.savedIn', { path: configFile() }),
+      system: () => t('lang.source.system'),
+      default: () => t('lang.source.default'),
+    }[source]();
     console.log(C.muted(`  ${from}`));
     console.log(C.muted(`  ${t('lang.switchHint', { other: otherLang(lang) })}`));
     return;

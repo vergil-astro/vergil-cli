@@ -194,7 +194,7 @@ Skins live in [vergil-skins](https://github.com/vergil-astro/vergil-skins), offi
 
 ### Language
 
-vg speaks Chinese (`zh`) by default, and English (`en`) as the second language. The first time it runs in a terminal, it asks which one you want and saves the answer.
+vg speaks Chinese (`zh`) by default, and English (`en`) as the second language. The first time you run it yourself in a terminal, it asks which one you want and saves the answer. It never asks when it runs as part of something automated, such as a package script (`pnpm build` runs `vg images organize`) or a CI job, even if the build has a terminal attached, as on EdgeOne Pages.
 
 ```bash
 vg lang                                   # Show the display language and where it comes from
@@ -203,7 +203,7 @@ vg lang zh                                # Switch to Chinese
 VG_LANG=en vg list                        # One run in English, whatever is saved
 ```
 
-The language is chosen in this order: the `VG_LANG` environment variable (`zh` or `en`), then the saved choice, then `zh`. The choice is saved in `$XDG_CONFIG_HOME/vergil/config.json`, or `~/.config/vergil/config.json` when `XDG_CONFIG_HOME` is not set; nothing is written into your site.
+The language is chosen in this order: the `VG_LANG` environment variable (`zh` or `en`), then the saved choice, then the system locale (`LC_ALL`, `LC_MESSAGES`, `LANG`) when it clearly says Chinese or English, then `zh`. Build machines often have a neutral locale such as `C.UTF-8`; to pin the language of build logs, set `VG_LANG` in the platform's environment variables. The choice is saved in `$XDG_CONFIG_HOME/vergil/config.json`, or `~/.config/vergil/config.json` when `XDG_CONFIG_HOME` is not set; nothing is written into your site.
 
 The language covers vg's own messages, help and reports. What vg writes into your site keeps its own language: the templates of `vg new`, and the placeholder content and config of `vg reset`. Directive docs (`vg help <directive>`, `vg directives ref`) come from your theme and are shown as the theme wrote them.
 

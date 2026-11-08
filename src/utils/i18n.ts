@@ -11,13 +11,14 @@ import zh from '../locales/zh.json' with { type: 'json' };
  * Which language, highest priority first:
  *   1. the VG_LANG environment variable (zh | en)
  *   2. the choice saved in the user's config file (`vg lang <zh|en>`, or the first-run prompt)
- *   3. zh
+ *   3. the system locale (LC_ALL, LC_MESSAGES, LANG), when it clearly says Chinese or English
+ *   4. zh
  *
  * Content vg writes into a site (post templates, `vg reset` placeholders) and the directive
  * docs that come from the theme keep their own language; they are not looked up here.
  */
 export type Lang = 'zh' | 'en';
-export type LangSource = 'env' | 'config' | 'default';
+export type LangSource = 'env' | 'config' | 'system' | 'default';
 export const LANGS: readonly Lang[] = ['zh', 'en'];
 export const DEFAULT_LANG: Lang = 'zh';
 
@@ -67,11 +68,24 @@ export function saveLang(lang: Lang, env: NodeJS.ProcessEnv = process.env): stri
   return file;
 }
 
+/**
+ * The language the system locale names, as POSIX resolves it: LC_ALL overrides LC_MESSAGES,
+ * which overrides LANG. Only a clear Chinese or English locale counts; C, POSIX or anything
+ * else gives null. Build machines often run with C.UTF-8 or en_US.UTF-8 whoever the site
+ * belongs to, which is why this ranks below a saved choice.
+ */
+export function systemLang(env: NodeJS.ProcessEnv = process.env): Lang | null {
+  const locale = [env.LC_ALL, env.LC_MESSAGES, env.LANG].find((value) => value && value.trim());
+  return normalizeLang(locale);
+}
+
 export function resolveLang(env: NodeJS.ProcessEnv = process.env): { lang: Lang; source: LangSource } {
   const fromEnv = normalizeLang(env.VG_LANG);
   if (fromEnv) return { lang: fromEnv, source: 'env' };
   const saved = savedLang(env);
   if (saved) return { lang: saved, source: 'config' };
+  const system = systemLang(env);
+  if (system) return { lang: system, source: 'system' };
   return { lang: DEFAULT_LANG, source: 'default' };
 }
 

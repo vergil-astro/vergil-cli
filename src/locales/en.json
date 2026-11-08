@@ -9,6 +9,7 @@
   "lang.switchHint": "Switch any time: vg lang {other}",
   "lang.current": "Display language: {name} ({code})",
   "lang.source.env": "Set by the environment variable VG_LANG",
+  "lang.source.system": "Taken from the system locale (LC_ALL / LC_MESSAGES / LANG); nothing saved yet",
   "lang.source.default": "The default; no language has been saved yet",
   "lang.unknown": "Unknown language: {lang}",
   "lang.saveFailed": "Could not save the language to {path}: {error}",

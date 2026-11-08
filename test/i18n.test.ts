@@ -107,6 +107,19 @@ describe('choosing the language', () => {
     expect(resolveLang({ ...env, VG_LANG: 'fr' })).toEqual({ lang: 'en', source: 'config' });
   });
 
+  it('takes a clear system locale when nothing is saved, but not C or POSIX', () => {
+    const dir = tempDir();
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LANG: 'en_US.UTF-8' })).toEqual({ lang: 'en', source: 'system' });
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LANG: 'zh_CN.UTF-8' })).toEqual({ lang: 'zh', source: 'system' });
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LANG: 'C.UTF-8' })).toEqual({ lang: 'zh', source: 'default' });
+    // LC_ALL overrides LANG, even when it names no language (POSIX order)
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LC_ALL: 'zh_CN.UTF-8', LANG: 'en_US.UTF-8' })).toEqual({ lang: 'zh', source: 'system' });
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LC_ALL: 'C', LANG: 'en_US.UTF-8' })).toEqual({ lang: 'zh', source: 'default' });
+    // A saved choice beats the system locale
+    saveLang('zh', { XDG_CONFIG_HOME: dir });
+    expect(resolveLang({ XDG_CONFIG_HOME: dir, LANG: 'en_US.UTF-8' })).toEqual({ lang: 'zh', source: 'config' });
+  });
+
   it('keeps other settings in the config file', () => {
     const dir = tempDir();
     mkdirSync(join(dir, 'vergil'));
@@ -133,6 +146,16 @@ describe('first-run prompt', () => {
     for (const args of [['list', '--json'], ['--help'], ['new', '-h'], ['--version'], ['-v'], ['lang'], ['lang', 'en']]) {
       expect(shouldAskLanguage(args, empty(), true), args.join(' ')).toBe(false);
     }
+  });
+
+  it('does not ask when run from a package script or in CI, even with a terminal attached', () => {
+    // pnpm build runs `vg images organize`; hosting platforms like EdgeOne give the build a terminal
+    expect(shouldAskLanguage(['images', 'organize'], { ...empty(), npm_lifecycle_event: 'build' }, true)).toBe(false);
+    expect(shouldAskLanguage(['list'], { ...empty(), CI: 'true' }, true)).toBe(false);
+    expect(shouldAskLanguage(['list'], { ...empty(), CI: '1' }, true)).toBe(false);
+    // An explicit "not CI" still asks
+    expect(shouldAskLanguage(['list'], { ...empty(), CI: 'false' }, true)).toBe(true);
+    expect(shouldAskLanguage(['list'], { ...empty(), CI: '0' }, true)).toBe(true);
   });
 
   it('reads the answer: Enter or 1 is zh, 2 is en', () => {
