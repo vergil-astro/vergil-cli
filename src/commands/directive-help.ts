@@ -3,6 +3,7 @@ import { resolveThemeFile } from '../utils/theme.js';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { fail, printJson } from '../utils/output.js';
+import { t, withLabel, type MessageKey } from '../utils/i18n.js';
 import type { JsonOptions } from '../types.js';
 
 /**
@@ -10,6 +11,9 @@ import type { JsonOptions } from '../types.js';
  * in @vergil-astro/theme, or in src/ for older template-style sites),
  * so it always matches the theme version the site runs. The same schema drives
  * `vg directives ref` and `vg directives check`.
+ *
+ * The directive text (summaries, attribute docs, examples, notes) comes from the theme and is
+ * shown as it is; only vg's own labels around it follow the user's language.
  */
 const SCHEMA_PATH = 'plugins/directives/schema.mjs';
 
@@ -59,49 +63,54 @@ const FORM_SYNTAX: Record<DirectiveSpec['forms'][number], (name: string) => stri
 async function loadSchema(): Promise<DirectiveSchema | null> {
   const root = getProjectRoot();
   if (!root) {
-    fail('Not inside a Vergil site', 'Directive help reads the site\'s own directive list. Run it from your site folder.');
+    fail(t('directive.notInSite'), t('directive.notInSiteHint'));
     return null;
   }
   const file = resolveThemeFile(root, SCHEMA_PATH);
   if (!file) {
-    fail('No directive list in this site\'s theme', 'This site runs an older theme. Update the theme to get directive help.');
+    fail(t('directive.noSchema'), t('directive.noSchemaHint'));
     return null;
   }
   return (await import(pathToFileURL(file).href)) as DirectiveSchema;
 }
 
 function describeAttr(attr: AttrSpec): string {
-  const parts = [attr.values?.length ? attr.values.join(' | ') : attr.type];
+  const parts = [attr.values?.length ? attr.values.join(' | ') : t(`directive.type.${attr.type}`)];
   if (attr.format && attr.type !== 'enum') parts.push(`(${attr.format})`);
-  if (attr.default) parts.push(`default ${attr.default}`);
-  if (attr.required) parts.push('required');
-  return parts.join(', ');
+  if (attr.default) parts.push(t('directive.default', { value: attr.default }));
+  if (attr.required) parts.push(t('directive.required'));
+  return parts.join(t('directive.attrSep'));
+}
+
+/** `Category: …` style line, label highlighted */
+function field(label: MessageKey, value: string): string {
+  return withLabel(t(label), value, C.text);
 }
 
 function printDirective(d: DirectiveSpec): void {
   console.log(C.accent(`\n${d.name.toUpperCase()}\n`));
-  console.log(`${C.text('Category:')} ${d.category}`);
-  console.log(`${C.text('Syntax:')} ${d.forms.map((f) => C.accent(FORM_SYNTAX[f](d.name))).join('  or  ')}`);
-  console.log(`${C.text('Desc:')} ${d.summary}\n`);
+  console.log(field('directive.category', d.category));
+  console.log(field('directive.syntax', d.forms.map((f) => C.accent(FORM_SYNTAX[f](d.name))).join(`  ${t('directive.syntaxOr')}  `)));
+  console.log(`${field('directive.desc', d.summary)}\n`);
 
   const attrs = Object.entries(d.attrs);
   if (attrs.length) {
-    console.log(C.subtitle('Attributes:'));
+    console.log(C.subtitle(t('directive.attributes')));
     const width = Math.max(...attrs.map(([key]) => key.length)) + 2;
     for (const [key, attr] of attrs) {
       console.log(`  ${C.accent(key.padEnd(width))}${attr.desc}`);
       console.log(`  ${' '.repeat(width)}${C.muted(describeAttr(attr))}`);
     }
-    for (const group of d.oneOf || []) console.log(C.muted(`  At least one of: ${group.join(', ')}`));
+    for (const group of d.oneOf || []) console.log(C.muted(`  ${t('directive.atLeastOne', { list: group.join(', ') })}`));
     console.log();
   }
-  if (d.body) console.log(`${C.text('Body:')} ${d.body.desc}\n`);
+  if (d.body) console.log(`${field('directive.body', d.body.desc)}\n`);
 
-  console.log(C.subtitle('Example:'));
+  console.log(C.subtitle(t('directive.example')));
   console.log(C.muted(d.example));
   if (d.notes?.length) {
     console.log();
-    console.log(C.subtitle('Notes:'));
+    console.log(C.subtitle(t('directive.notes')));
     d.notes.forEach((n) => console.log(`  - ${n}`));
   }
   console.log();
@@ -109,7 +118,7 @@ function printDirective(d: DirectiveSpec): void {
 
 function printExtra(e: ExtraSpec): void {
   console.log(C.accent(`\n${e.title}\n`));
-  console.log(C.subtitle('Example:'));
+  console.log(C.subtitle(t('directive.example')));
   console.log(C.muted(e.example));
   console.log();
   e.notes.forEach((n) => console.log(`  - ${n}`));
@@ -133,9 +142,9 @@ export async function directiveHelpCommand(topic?: string, options: JsonOptions 
         extras: EXTRAS.map((e) => ({ name: e.name, title: e.title })),
       });
     }
-    console.log(C.accent(`\nVergil Directives — ${DIRECTIVES.length} 个内容指令\n`));
-    console.log(C.muted('Use `vg help <directive>` for syntax; `vg help code` and `vg help math` cover code blocks and math.'));
-    console.log(C.muted('`pnpm directives:ref` prints the full reference as Markdown, `pnpm directives:check` checks your posts.\n'));
+    console.log(C.accent(`\n${t('directive.listTitle', { count: DIRECTIVES.length })}\n`));
+    console.log(C.muted(t('directive.listHintHelp')));
+    console.log(C.muted(`${t('directive.listHintScripts')}\n`));
 
     for (const category of CATEGORIES) {
       console.log(C.subtitle(`${category}:`));
@@ -154,5 +163,5 @@ export async function directiveHelpCommand(topic?: string, options: JsonOptions 
   const extra = EXTRAS.find((e) => e.name === name);
   if (extra) return options.json ? printJson(extra) : printExtra(extra);
 
-  fail(`Directive not found: ${topic}`, 'Run `vg help directives` to see all');
+  fail(t('directive.notFound', { topic }), t('directive.notFoundHint'));
 }

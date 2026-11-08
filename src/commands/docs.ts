@@ -3,7 +3,8 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
-import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite, printJson, sitePath } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ function listBooks(docsDir: string): BookInfo[] {
 
 export async function docsListCommand(draftsOnly?: boolean, json?: boolean): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const docsDir = join(root, 'src', 'content', 'docs');
 
@@ -148,11 +149,11 @@ export async function docsListCommand(draftsOnly?: boolean, json?: boolean): Pro
       return printJson({ drafts: drafts.map(d => ({ book: d.book, title: d.title, path: sitePath(root, d.path) })) });
     }
     if (drafts.length === 0) {
-      console.log(C.success('✓ No drafts found in docs'));
+      console.log(C.success(t('docs.noDraftsInDocs')));
       return;
     }
 
-    console.log(C.accent('\nDocs Drafts\n'));
+    console.log(C.accent(`\n${t('docs.draftsTitle')}\n`));
     console.log(C.dim('─'.repeat(60)));
 
     let currentBook = '';
@@ -161,11 +162,11 @@ export async function docsListCommand(draftsOnly?: boolean, json?: boolean): Pro
         currentBook = d.book;
         console.log(`\n  ${C.accent(currentBook)}`);
       }
-      console.log(`    ${C.accent('▸')} ${link(C.text(d.title), d.path)}${C.warning(' [draft]')}`);
+      console.log(`    ${C.accent('▸')} ${link(C.text(d.title), d.path)}${C.warning(` ${t('common.draftTag')}`)}`);
       console.log(`      ${C.muted(d.relpath)}`);
     }
 
-    console.log(C.muted(`\nTotal: ${drafts.length} draft${drafts.length > 1 ? 's' : ''}`));
+    console.log(C.muted(`\n${t('docs.totalDrafts', { count: drafts.length })}`));
     return;
   }
 
@@ -180,31 +181,31 @@ export async function docsListCommand(draftsOnly?: boolean, json?: boolean): Pro
   }
 
   if (books.length === 0) {
-    console.log(C.muted('No docs found in src/content/docs/.'));
-    console.log(C.muted('  Create one with: vg new doc "Title" --path <book>/<chapter>'));
+    console.log(C.muted(t('docs.none')));
+    console.log(C.muted(`  ${t('docs.noneHint')}`));
     return;
   }
 
-  console.log(C.accent('\nDocs\n'));
+  console.log(C.accent(`\n${t('docs.title')}\n`));
   console.log(C.dim('─'.repeat(60)));
 
   const idWidth = Math.max(...books.map(b => b.id.length), 12);
   for (const book of books) {
     const draftLabel = book.draftCount > 0
-      ? C.warning(` (${book.draftCount} draft${book.draftCount > 1 ? 's' : ''})`)
+      ? C.warning(` ${t('common.drafts', { count: book.draftCount })}`)
       : '';
     const title = book.title ? C.muted(`  ${book.title}`) : '';
     console.log(
       `  ${C.accent(book.id.padEnd(idWidth))}  ` +
-      `${C.text(String(book.docCount).padStart(3))} docs${draftLabel}${title}`
+      `${C.text(String(book.docCount).padStart(3))} ${t('docs.docsUnit', { count: book.docCount })}${draftLabel}${title}`
     );
   }
 
   const totalDocs = books.reduce((sum, b) => sum + b.docCount, 0);
   const totalDrafts = books.reduce((sum, b) => sum + b.draftCount, 0);
-  const draftSuffix = totalDrafts > 0 ? `, ${totalDrafts} draft${totalDrafts > 1 ? 's' : ''}` : '';
-  console.log(C.muted(`\nTotal: ${books.length} books, ${totalDocs} docs${draftSuffix}`));
-  console.log(C.muted(`Use \`vg docs <book>\` to view a book's chapter tree.`));
+  const draftSuffix = totalDrafts > 0 ? t('list.draftsSuffix', { count: totalDrafts }) : '';
+  console.log(C.muted(`\n${t('docs.total', { books: t('docs.books', { count: books.length }), docs: t('docs.docs', { count: totalDocs }), drafts: draftSuffix })}`));
+  console.log(C.muted(t('docs.hintTree')));
 }
 
 // ── Tree (`vg docs <book>` / `vg docs show <book>`) ─────────────────────────
@@ -299,7 +300,7 @@ function renderNode(node: DocLeaf | Category, prefix: string, isLast: boolean): 
   const branch = isLast ? '└─ ' : '├─ ';
 
   if (node.type === 'doc') {
-    const draft = node.draft ? C.warning(' [draft]') : '';
+    const draft = node.draft ? C.warning(` ${t('common.draftTag')}`) : '';
     console.log(`${prefix}${C.dim(branch)}${link(C.text(node.title), node.path)}${draft}`);
     return;
   }
@@ -362,7 +363,7 @@ function nodeJson(root: string, node: DocLeaf | Category): unknown {
 
 export async function docsShowCommand(bookName: string, draftsOnly?: boolean, json?: boolean): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const docsDir = join(root, 'src', 'content', 'docs');
   const bookDir = join(docsDir, bookName);
@@ -371,7 +372,7 @@ export async function docsShowCommand(bookName: string, draftsOnly?: boolean, js
   const isBookName = bookName !== '.' && bookName !== '..' && !/[\\/]/.test(bookName);
   if (!isBookName || !dirExists(bookDir)) {
     const books = listBooks(docsDir);
-    return fail(`Book not found: ${bookName}`, ...(books.length > 0 ? [`Available: ${books.map(b => b.id).join(', ')}`] : []));
+    return fail(t('docs.bookNotFound', { book: bookName }), ...(books.length > 0 ? [t('common.available', { list: books.map(b => b.id).join(', ') })] : []));
   }
 
   const tree = buildCategory(bookDir, bookName);
@@ -381,7 +382,7 @@ export async function docsShowCommand(bookName: string, draftsOnly?: boolean, js
   if (draftsOnly) {
     const filtered = filterDraftTree(tree) as Category | null;
     if (!filtered && !json) {
-      console.log(C.success(`✓ No drafts in ${bookName}`));
+      console.log(C.success(t('docs.noDraftsInBook', { book: bookName })));
       return;
     }
     displayTree = filtered ?? { type: 'category', name: bookName, docCount: 0, draftCount: 0, children: [] };
@@ -399,16 +400,16 @@ export async function docsShowCommand(bookName: string, draftsOnly?: boolean, js
   }
 
   const draftSuffix = displayTree.draftCount > 0
-    ? `, ${displayTree.draftCount} draft${displayTree.draftCount > 1 ? 's' : ''}`
+    ? t('list.draftsSuffix', { count: displayTree.draftCount })
     : '';
-  const summary = `(${displayTree.docCount} doc${displayTree.docCount !== 1 ? 's' : ''}${draftSuffix})`;
+  const summary = t('docs.summary', { docs: t('docs.docs', { count: displayTree.docCount }), drafts: draftSuffix });
   const titlePart = metaTitle ? `  ${C.muted(metaTitle)}` : '';
 
   console.log(`\n${C.accent(bookName)}  ${C.muted(summary)}${titlePart}`);
   console.log(C.dim('─'.repeat(60)));
 
   if (displayTree.children.length === 0) {
-    console.log(C.muted('  (empty)'));
+    console.log(C.muted(`  ${t('docs.empty')}`));
     return;
   }
 

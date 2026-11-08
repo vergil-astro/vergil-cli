@@ -1,34 +1,38 @@
 #!/usr/bin/env node
 /**
- * 输出内容指令参考（Markdown），内容来自 src/plugins/directives/schema.mjs，和当前主题版本一致。
- * 给人查，也给 AI 写作助手读。只读不写。
+ * Prints the content directive reference (Markdown), built from src/plugins/directives/schema.mjs so it matches the current theme version.
+ * For people to look things up, and for AI writing assistants to read. Read-only; writes nothing.
  *
- * 用法：
- *   vg directives ref                    全部指令，外加写法规则、代码块和数学公式
- *   vg directives ref <指令名>...        只看这几个指令，如 vg directives ref callout tabs
+ * The directive text (summaries, attribute docs, examples, notes, syntax rules) comes from the theme
+ * and is printed as it is; only the headings and labels around it follow the user's language.
+ *
+ * Usage:
+ *   vg directives ref                    all directives, plus syntax rules, code blocks, and math
+ *   vg directives ref <name>...          only these directives, e.g. vg directives ref callout tabs
  */
 import { loadDirectiveSchema } from './theme-schema.mjs';
+import { listSep, t } from './i18n.mjs';
 
 const { CATEGORIES, DIRECTIVES, DIRECTIVE_MAP, SYNTAX_RULES, EXTRAS } = await loadDirectiveSchema();
 
 const TYPE_LABEL = {
-    string: () => '文字',
-    number: () => '数字',
+    string: () => t('directives.ref.type.text'),
+    number: () => t('directives.ref.type.number'),
     boolean: () => '`true` / `false`',
-    color: () => '颜色',
+    color: () => t('directives.ref.type.color'),
     enum: (a) => a.values.map((v) => `\`${v}\``).join(' | '),
-    list: (a) => `逗号分隔：${a.values.map((v) => `\`${v}\``).join('、')}`,
+    list: (a) => t('directives.ref.type.list', { values: a.values.map((v) => `\`${v}\``).join(listSep()) }),
 };
 
 const FORM_LABEL = {
-    container: (n) => `\`:::${n}{...}\` 开头、单独一行 \`:::\` 结尾`,
-    leaf: (n) => `单行 \`::${n}{...}\``,
-    text: (n) => `行内 \`:${n}[...]{...}\``,
+    container: (name) => t('directives.ref.form.container', { name }),
+    leaf: (name) => t('directives.ref.form.leaf', { name }),
+    text: (name) => t('directives.ref.form.text', { name }),
 };
 
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
-/** 示例里可能有代码块，外层围栏要比里面最长的反引号多一个 */
+/** Examples may contain code blocks, so the outer fence needs one more backtick than the longest run inside */
 function fenced(code, lang = 'markdown') {
     const longest = Math.max(2, ...[...code.matchAll(/`+/g)].map((m) => m[0].length));
     const fence = '`'.repeat(longest + 1);
@@ -36,23 +40,24 @@ function fenced(code, lang = 'markdown') {
 }
 
 function renderDirective(d) {
-    const out = [`### ${d.name}：${d.summary}`, '', `写法：${d.forms.map((f) => FORM_LABEL[f](d.name)).join('，或')}`, '', fenced(d.example)];
+    const forms = d.forms.map((f) => FORM_LABEL[f](d.name)).join(t('directives.ref.formSep'));
+    const out = [t('directives.ref.heading', { name: d.name, summary: d.summary }), '', t('directives.ref.syntax', { forms }), '', fenced(d.example)];
     const attrs = Object.entries(d.attrs);
     if (attrs.length) {
-        out.push('', '| 属性 | 取值 | 默认 | 说明 |', '| --- | --- | --- | --- |');
+        out.push('', t('directives.ref.tableHeader'), '| --- | --- | --- | --- |');
         for (const [key, a] of attrs) {
-            const type = TYPE_LABEL[a.type](a) + (a.format && a.type !== 'enum' ? `（${a.format}）` : '');
-            const desc = (a.required ? '**必填**。' : '') + a.desc;
+            const type = TYPE_LABEL[a.type](a) + (a.format && a.type !== 'enum' ? t('directives.ref.format', { format: a.format }) : '');
+            const desc = (a.required ? t('directives.ref.required') : '') + a.desc;
             out.push(`| \`${key}\` | ${cell(type)} | ${a.default ? `\`${cell(a.default)}\`` : ''} | ${cell(desc)} |`);
         }
     } else {
-        out.push('', '没有属性。');
+        out.push('', t('directives.ref.noAttrs'));
     }
-    for (const group of d.oneOf || []) out.push('', `${group.map((k) => `\`${k}\``).join('、')} 至少写一个。`);
+    for (const group of d.oneOf || []) out.push('', t('directives.ref.oneOf', { list: group.map((k) => `\`${k}\``).join(listSep()) }));
     if (d.body) {
-        const cols = d.body.columns ? `；列：${d.body.columns.map((c) => `\`${c}\``).join('、')}` : '';
-        const label = d.forms.includes('text') ? '方括号里' : '正文';
-        out.push('', `${label}：${d.body.desc}${cols}`);
+        const columns = d.body.columns ? t('directives.ref.columns', { list: d.body.columns.map((c) => `\`${c}\``).join(listSep()) }) : '';
+        const label = t(d.forms.includes('text') ? 'directives.ref.labelBrackets' : 'directives.ref.labelBody');
+        out.push('', t('directives.ref.bodyLine', { label, desc: d.body.desc, columns }));
     }
     if (d.notes?.length) out.push('', ...d.notes.map((n) => `- ${n}`));
     return out.join('\n');
@@ -60,11 +65,14 @@ function renderDirective(d) {
 
 function renderAll() {
     const out = [
-        '# Vergil 内容指令参考',
+        t('directives.ref.title'),
         '',
-        `由站点所用主题的指令规则生成，和当前主题版本一致。共 ${DIRECTIVES.length} 个指令，按用途分为 ${CATEGORIES.length} 类。写完用 \`vg directives check <文件>\` 检查。`,
+        t('directives.ref.intro', {
+            directives: t('directives.ref.directives', { count: DIRECTIVES.length }),
+            categories: t('directives.ref.categories', { count: CATEGORIES.length }),
+        }),
         '',
-        '## 写法规则',
+        t('directives.ref.syntaxRules'),
         '',
         ...SYNTAX_RULES.map((r) => `- ${r}`),
     ];
@@ -72,7 +80,7 @@ function renderAll() {
         out.push('', `## ${category}`);
         for (const d of DIRECTIVES.filter((x) => x.category === category)) out.push('', renderDirective(d));
     }
-    out.push('', '## 不是指令的语法');
+    out.push('', t('directives.ref.extras'));
     for (const e of EXTRAS) out.push('', `### ${e.title}`, '', fenced(e.example), '', ...e.notes.map((n) => `- ${n}`));
     return out.join('\n');
 }
@@ -83,7 +91,7 @@ if (!names.length) {
 } else {
     const unknown = names.filter((n) => !DIRECTIVE_MAP.has(n));
     if (unknown.length) {
-        console.error(`没有这些指令：${unknown.join('、')}。全部指令：${DIRECTIVES.map((d) => d.name).join('、')}`);
+        console.error(t('directives.ref.unknown', { unknown: unknown.join(listSep()), all: DIRECTIVES.map((d) => d.name).join(listSep()) }));
         process.exit(1);
     }
     console.log(names.map((n) => renderDirective(DIRECTIVE_MAP.get(n))).join('\n\n'));

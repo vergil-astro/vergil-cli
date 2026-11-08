@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 /** Minimal x.y.z comparison for theme versions (pre-release tags are not used) */
 export function parseVersion(v: string): [number, number, number] | null {
   const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
@@ -7,7 +9,7 @@ export function parseVersion(v: string): [number, number, number] | null {
 export function compareVersions(a: string, b: string): number {
   const x = parseVersion(a);
   const y = parseVersion(b);
-  if (!x || !y) throw new Error(`Not a version: ${!x ? a : b}`);
+  if (!x || !y) throw new Error(t('upgrade.notVersion', { version: !x ? a : b }));
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
   return 0;
 }

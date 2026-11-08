@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 /**
- * 图片体检：只读不写，不会删除或移动任何文件。
+ * Image health check: read-only; it never deletes or moves any file.
  *
- * 报告五类问题：
- *   1. 引用失效  内容里写了本地图片路径，但文件不存在（唯一会让命令失败的一类）
- *   2. 可以迁移  正文图片、banner、cover、seo.image 或图文动态的图片引用了 public/ 下的图，挪到 src/assets/img/ 用 @img/ 引用能被优化
- *   3. 内容重复  几个文件的内容完全相同
- *   4. 体积过大  单张超过 MAX_KB（改下面的常量调整）
- *   5. 暂未引用  文件名没有出现在任何源码或内容里（只提示，可能是留着以后用的）
+ * Reports five kinds of problems:
+ *   1. Broken references  content points to a local image path, but the file does not exist (the only kind that fails the command)
+ *   2. Movable            body images, banner, cover, seo.image, or image moment images reference images under public/; moving them to src/assets/img/ and referencing them with @img/ lets them be optimized
+ *   3. Duplicates         several files have exactly the same content
+ *   4. Too large          a single image exceeds MAX_KB (change the constant below to adjust)
+ *   5. Unreferenced       the file name does not appear in any source or content (just a hint; it may be kept for later use)
  *
- * 用法：vg images check
+ * Usage: vg images check
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { t } from './i18n.mjs';
 
 const ROOT = process.cwd();
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
@@ -21,11 +22,11 @@ const TEXT_EXT = new Set(['.md', '.mdx', '.astro', '.ts', '.js', '.mjs', '.json'
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.astro', '.git']);
 const CONTENT_DIR = path.join(ROOT, 'src/content');
 const PUBLIC_DIR = path.join(ROOT, 'public');
-// @img/ 别名，和 tsconfig.json 的 paths 保持一致
+// The @img/ alias, kept in sync with paths in tsconfig.json
 const IMG_ALIAS = '@img/';
 const IMG_ALIAS_DIR = path.join(ROOT, 'src/assets/img');
 
-/** 单张图片超过这个体积（KB）会被提示 */
+/** Images larger than this size (KB) are flagged */
 const MAX_KB = 500;
 
 function walk(dir, out = []) {
@@ -48,12 +49,12 @@ const textFiles = [...allFiles, path.join(ROOT, 'astro.config.mjs')].filter(
     (f) => TEXT_EXT.has(ext(f)) && fs.existsSync(f)
 );
 
-// ── 从内容文件里提取本地图片引用 ──
-// 覆盖：Markdown 图片语法、HTML/指令的 src="..."、frontmatter 里的图片路径字段
+// ── Extract local image references from content files ──
+// Covers: Markdown image syntax, src="..." in HTML/directives, and image path fields in frontmatter
 const MD_IMAGE = /!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+"[^"]*")?\s*\)/g;
 const ATTR_SRC = /\b(?:src|bg|cover|banner|avatar)\s*=\s*"([^"]+)"/g;
-// 内容指令里放图片的属性。sites、posters 的图片来自 links.ts 配置，不在内容里，不用处理；
-// story 的镜头图片是表格里的 ![](...)，走正文图片的规则
+// Content directive attributes that hold images. Images for sites and posters come from the links.ts config, not from content, so they need no handling;
+// story shot images are ![](...) inside a table and follow the body image rules
 const IMG_DIRECTIVES = {
     image: ['src'],
     photo: ['src'],
@@ -65,11 +66,11 @@ const IMG_DIRECTIVES = {
     quot: ['icon'],
     title: ['prefix', 'suffix']
 };
-// :name{...}、::name{...}、:::name{...}，以及带文字的 :name[文字]{...}
+// :name{...}, ::name{...}, :::name{...}, and :name[text]{...} with a label
 const DIRECTIVE = /(:{1,4})([a-z]+)(\[[^\]]*\])?\{([^}]*)\}/g;
 const DIRECTIVE_ATTR = /(?<![a-z0-9-])([a-z][a-z0-9-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'}]+))/g;
 
-/** 找出指令属性里的图片路径，回调返回新值则替换（统一写成双引号） */
+/** Find image paths in directive attributes; if the callback returns a new value, replace it (always written with double quotes) */
 function mapDirectiveImages(text, onRef) {
     return text.replace(DIRECTIVE, (all, colons, name, label, body) => {
         const keys = IMG_DIRECTIVES[name];
@@ -84,16 +85,16 @@ function mapDirectiveImages(text, onRef) {
 }
 
 const FM_FIELD = /^\s*-?\s*(?:image|avatar|backgroundImage):\s*(?:(['"])(.+?)\1|([^'"\s#][^\s#]*))\s*(?:#.*)?$/gm;
-// 这几个字段支持 @img/，指向 public/ 时提示可以迁移
+// These fields support @img/; when they point to public/, suggest moving the image
 const FM_IMAGE_FIELD = /^\s*-?\s*(?:src|cover|banner):\s*(?:(['"])(.+?)\1|([^'"\s#][^\s#]*))\s*(?:#.*)?$/gm;
 const JSON_STRING = /"([^"]+\.(?:png|jpe?g|webp|gif|svg|avif))"/gi;
 
-// 代码块和行内代码里的路径只是示例，不算引用
+// Paths in code blocks and inline code are only examples, not references
 function stripCode(text) {
     const out = [];
     let fence = null;
     for (const line of text.split('\n')) {
-        // 代码块里的是写法示例；:::private 里的内容会被加密成字符串，图片没法交给 Astro，都跳过
+        // Code blocks hold syntax examples, and content inside :::private is encrypted into a string so its images cannot be handed to Astro; skip both
         const m = line.match(/^\s*(`{3,}|~{3,})/) || line.match(/^\s*(:{3,})(?:private(?![a-z])|\s*$)/);
         if (fence) {
             if (m && m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
@@ -130,7 +131,7 @@ const movable = [];
 for (const file of contentFiles) {
     const raw = fs.readFileSync(file, 'utf8');
     const text = ext(file) === '.json' ? raw : stripCode(raw);
-    const refs = new Map(); // ref -> 是否来自 Markdown 图片语法
+    const refs = new Map(); // ref -> whether it came from Markdown image syntax
     const add = (ref, fromMarkdown) => {
         if (!isLocal(ref) || !hasImageExt(ref)) return;
         refs.set(ref, refs.get(ref) || fromMarkdown);
@@ -139,7 +140,7 @@ for (const file of contentFiles) {
         for (const m of text.matchAll(JSON_STRING)) add(m[1], true);
     } else {
         for (const m of text.matchAll(MD_IMAGE)) add(m[1] ?? m[2], true);
-        // 支持 @img/ 的指令里的图，指向 public/ 时也提示可以迁移
+        // Images in directives that support @img/ also get the move suggestion when they point to public/
         mapDirectiveImages(text, (ref) => {
             add(ref, true);
             return null;
@@ -161,7 +162,7 @@ for (const file of contentFiles) {
     }
 }
 
-// ── 内容重复 ──
+// ── Duplicate content ──
 const byHash = new Map();
 for (const img of images) {
     const hash = crypto.createHash('md5').update(fs.readFileSync(img)).digest('hex');
@@ -170,35 +171,35 @@ for (const img of images) {
 }
 const duplicates = [...byHash.values()].filter((group) => group.length > 1);
 
-// ── 体积过大 ──
+// ── Too large ──
 const large = images
     .map((img) => ({ img, kb: fs.statSync(img).size / 1024 }))
     .filter((x) => x.kb > MAX_KB)
     .sort((a, b) => b.kb - a.kb);
 
-// ── 暂未引用（按文件名匹配） ──
+// ── Unreferenced (matched by file name) ──
 const corpus = textFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const unreferenced = images.filter((img) => {
     const name = path.basename(img);
     return !corpus.includes(name) && !corpus.includes(encodeURI(name));
 });
 
-// ── 输出 ──
+// ── Output ──
 function section(title, items, render) {
-    console.log(`\n${title}（${items.length}）`);
+    console.log(`\n${t('images.check.section', { title, count: items.length })}`);
     if (items.length === 0) {
-        console.log('  无');
+        console.log(`  ${t('images.check.none')}`);
         return;
     }
     for (const item of items) console.log(`  ${render(item)}`);
 }
 
-console.log(`扫描了 ${images.length} 张图片、${contentFiles.length} 个内容文件`);
+console.log(t('images.check.scanned', { images: t('images.count', { count: images.length }), files: t('images.contentFiles', { count: contentFiles.length }) }));
 
-section('✗ 引用失效', broken, ({ file, ref }) => `${rel(file)} → ${ref}`);
-section('→ 可以迁移到 src/assets/img/ 以获得优化', movable, ({ file, ref }) => `${rel(file)} → ${ref}`);
-section('≡ 内容重复', duplicates, (group) => group.map(rel).join('  ==  '));
-section(`▲ 体积超过 ${MAX_KB}KB`, large, ({ img, kb }) => `${rel(img)}  ${Math.round(kb)}KB`);
+section(t('images.check.broken'), broken, ({ file, ref }) => `${rel(file)} → ${ref}`);
+section(t('images.check.movable'), movable, ({ file, ref }) => `${rel(file)} → ${ref}`);
+section(t('images.check.duplicates'), duplicates, (group) => group.map(rel).join('  ==  '));
+section(t('images.check.large', { kb: MAX_KB }), large, ({ img, kb }) => `${rel(img)}  ${Math.round(kb)}KB`);
 
 const unrefByDir = new Map();
 for (const img of unreferenced) {
@@ -206,14 +207,14 @@ for (const img of unreferenced) {
     if (!unrefByDir.has(dir)) unrefByDir.set(dir, []);
     unrefByDir.get(dir).push(img);
 }
-section('○ 暂未引用（只是提示，不建议因此删除）', [...unrefByDir.entries()], ([dir, list]) => {
+section(t('images.check.unreferenced'), [...unrefByDir.entries()], ([dir, list]) => {
     const kb = Math.round(list.reduce((sum, f) => sum + fs.statSync(f).size, 0) / 1024);
     const names = list.slice(0, 3).map((f) => path.basename(f)).join(', ');
-    return `${dir}/  ${list.length} 张，${kb}KB  例如 ${names}${list.length > 3 ? ' …' : ''}`;
+    return `${t('images.check.unrefGroup', { dir, count: list.length, kb, names })}${list.length > 3 ? ' …' : ''}`;
 });
 
 if (broken.length > 0) {
-    console.log(`\n有 ${broken.length} 处图片引用失效，请修复后再提交。`);
+    console.log(`\n${t('images.check.failed', { count: broken.length })}`);
     process.exit(1);
 }
-console.log('\n没有失效的图片引用。');
+console.log(`\n${t('images.check.ok')}`);

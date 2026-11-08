@@ -4,7 +4,8 @@ import type { ListOptions } from '../types.js';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
 import { readFrontmatter } from '../utils/frontmatter.js';
-import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite, printJson, sitePath } from '../utils/output.js';
+import { t, type MessageKey } from '../utils/i18n.js';
 
 // Singular type → directory under src/content/
 const TYPE_DIRS: Record<string, string> = {
@@ -137,18 +138,18 @@ function summaryRows(root: string, draftsOnly: boolean): SummaryRow[] {
 
 function printSummary(rows: SummaryRow[], draftsOnly: boolean): void {
   if (rows.length === 0) {
-    console.log(C.muted(draftsOnly ? 'No drafts found.' : 'No content found.'));
+    console.log(C.muted(t(draftsOnly ? 'list.noDrafts' : 'list.noContent')));
     return;
   }
 
-  console.log(C.accent(draftsOnly ? '\nDrafts\n' : '\nContent\n'));
+  console.log(C.accent(`\n${t(draftsOnly ? 'list.draftsTitle' : 'list.contentTitle')}\n`));
   console.log(C.dim('─'.repeat(60)));
 
   const typeWidth = Math.max(...rows.map(r => r.type.length), 8);
   for (const r of rows) {
     const visible = draftsOnly ? r.drafts : r.total;
     const draftLabel = !draftsOnly && r.drafts > 0
-      ? C.warning(`  (${r.drafts} draft${r.drafts > 1 ? 's' : ''})`)
+      ? C.warning(`  ${t('common.drafts', { count: r.drafts })}`)
       : '';
     console.log(
       `  ${C.accent(r.type.padEnd(typeWidth))}  ` +
@@ -159,32 +160,29 @@ function printSummary(rows: SummaryRow[], draftsOnly: boolean): void {
   const totalVisible = rows.reduce((s, r) => s + (draftsOnly ? r.drafts : r.total), 0);
   const totalDrafts = rows.reduce((s, r) => s + r.drafts, 0);
   const draftSuffix = !draftsOnly && totalDrafts > 0
-    ? `, ${totalDrafts} draft${totalDrafts > 1 ? 's' : ''}`
+    ? t('list.draftsSuffix', { count: totalDrafts })
     : '';
 
-  console.log(C.muted(`\nTotal: ${totalVisible} item${totalVisible !== 1 ? 's' : ''}${draftSuffix}`));
-  console.log(C.muted(draftsOnly
-    ? 'Use `vg list <type> -d` to focus on one type.'
-    : 'Use `vg list <type>` to view items.'));
+  console.log(C.muted(`\n${t('list.total', { items: t('list.items', { count: totalVisible }), drafts: draftSuffix })}`));
+  console.log(C.muted(t(draftsOnly ? 'list.hintDrafts' : 'list.hintItems')));
 }
 
 // ── Items (`vg list <type>`) ────────────────────────────────────────────────
 
 function printDetail(files: FileEntry[], type: string, draftsOnly: boolean): void {
+  const typeName = t(`type.${type}` as MessageKey);
   if (files.length === 0) {
-    console.log(C.muted(draftsOnly
-      ? `No drafts in ${type}.`
-      : `No ${type} content found.`));
+    console.log(C.muted(t(draftsOnly ? 'list.noDraftsIn' : 'list.noContentOf', { type: typeName })));
     return;
   }
 
-  console.log(C.accent(`\n${type.toUpperCase()} (${files.length})`));
+  console.log(C.accent(`\n${t('list.detailTitle', { type: typeName.toUpperCase(), count: files.length })}`));
   console.log(C.dim('─'.repeat(60)));
 
   files.forEach(f => {
     const title = String(f.meta?.title || f.name);
     const date = formatDate(f.meta?.date ?? f.meta?.publishDate);
-    const draftTag = f.meta?.draft === true ? C.warning(' [draft]') : '';
+    const draftTag = f.meta?.draft === true ? C.warning(` ${t('common.draftTag')}`) : '';
     const tags = Array.isArray(f.meta?.tags) && f.meta?.tags.length > 0
       ? C.muted(` #${f.meta.tags[0]}`)
       : '';
@@ -209,7 +207,7 @@ function itemJson(root: string, f: FileEntry) {
 
 export async function listCommand(type: string | undefined, options: ListOptions): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
   const draftsOnly = !!options.drafts;
 
   if (!type) {
@@ -227,7 +225,7 @@ export async function listCommand(type: string | undefined, options: ListOptions
 
   const normalized = normalizeType(type);
   if (!normalized) {
-    return fail(`Unknown type: ${type}`, 'Available: post, page, project, album, thought, moment', 'Use `vg docs` for documentation books.');
+    return fail(t('list.unknownType', { type }), t('common.available', { list: TYPE_ORDER.join(', ') }), t('list.docsHint'));
   }
 
   const files = loadType(root, normalized).filter(f => draftsOnly ? f.meta?.draft === true : true);

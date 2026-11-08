@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * 内容指令检查：按站点所用主题的指令规则校验 Markdown 里的指令写法。只读不写。
+ * Content directive check: validates directive syntax in Markdown against the directive rules of the theme the site uses. Read-only; writes nothing.
  *
- * 错误（命令返回失败）：
- *   - 未知的容器指令、单行指令，或者写法不对（比如把 video 写成单行 ::video）
- *   - 以冒号开头、却没被识别成指令的行（冒号后多了空格、属性没写在一行……）
- *   - 未知属性、取值不在范围内、缺少必填属性
- *   - 容器没有闭合
- *   - 正文格式不对：echart 不是合法 JSON、表格缺少必需的列、tabs 里没有 tab: 行……
- * 提示（不影响结果）：
- *   - 内容会被忽略或丢掉的写法，比如没有正文的指令写了正文
+ * Errors (the command fails):
+ *   - unknown container or leaf directives, or the wrong form (e.g. video written as a single-line ::video)
+ *   - lines that start with a colon but were not recognized as a directive (extra space after the colons, attributes not on one line, ...)
+ *   - unknown attributes, values out of range, missing required attributes
+ *   - unclosed containers
+ *   - malformed body: echart is not valid JSON, a table is missing a required column, tabs has no tab: line, ...
+ * Warnings (do not affect the result):
+ *   - content that will be ignored or dropped, e.g. a body written inside a directive that takes no body
  *
- * 行内指令只检查 schema 里登记过的名字。没人认领的行内指令（比如 a:b 里的 :b）渲染时会还原成原文，不算错。
+ * Text directives are only checked for names registered in the schema. Unclaimed text directives (e.g. the :b in a:b) render back as the original text, so they are not errors.
  *
- * 用法：
- *   vg directives check                检查 src/content 下所有 Markdown
- *   vg directives check <文件>...    只检查这几个文件
+ * Usage:
+ *   vg directives check                check all Markdown under src/content
+ *   vg directives check <file>...      only check these files
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +25,7 @@ import remarkDirective from 'remark-directive';
 import remarkMath from 'remark-math';
 import { visit } from 'unist-util-visit';
 import { loadDirectiveSchema } from './theme-schema.mjs';
+import { listSep, t } from './i18n.mjs';
 
 const { DIRECTIVES, DIRECTIVE_MAP, NAMED_COLORS } = await loadDirectiveSchema();
 
@@ -36,19 +37,19 @@ const parser = remark().use(remarkGfm).use(remarkDirective).use(remarkMath);
 
 const FORM = { containerDirective: 'container', leafDirective: 'leaf', textDirective: 'text' };
 const FORM_SYNTAX = {
-    container: (name) => `:::${name}{...} 加结尾的 :::`,
-    leaf: (name) => `单行 ::${name}{...}`,
-    text: (name) => `行内 :${name}[...]{...}`,
+    container: (name) => t('directives.check.form.container', { name }),
+    leaf: (name) => t('directives.check.form.leaf', { name }),
+    text: (name) => t('directives.check.form.text', { name }),
 };
 const PLAN_COLUMN_TYPES = new Set(['text', 'status', 'priority', 'date', 'progress', 'percent', 'number', 'checkbox', 'select', 'link']);
 const PLAN_VIEW_NEEDS = {
-    timeline: (a) => a.dateCol || a.startDate || a.endDate ? '' : 'dateCol 或 startDate/endDate',
+    timeline: (a) => a.dateCol || a.startDate || a.endDate ? '' : t('directives.check.dateColOrRange'),
     milestone: (a) => a.dateCol || a.startDate || a.endDate ? '' : 'dateCol',
     ebbinghaus: (a) => a.dateCol || a.startDate || a.endDate ? '' : 'dateCol',
     progress: (a) => a.progressCol ? '' : 'progressCol',
 };
 
-// ── 文件 ──
+// ── Files ──
 
 function walk(dir, out = []) {
     if (!fs.existsSync(dir)) return out;
@@ -60,24 +61,24 @@ function walk(dir, out = []) {
     return out;
 }
 
-/** 命令行传进来的文件：只接受项目内已存在的 .md 文件 */
+/** Files passed on the command line: only existing .md files inside the project are accepted */
 function resolveArgs(args) {
     const files = [];
     const rejected = [];
     for (const arg of args) {
         const full = path.resolve(ROOT, arg);
         const inside = full === ROOT || full.startsWith(ROOT + path.sep);
-        if (!inside) rejected.push(`${arg}（不在项目目录里）`);
-        else if (path.extname(full).toLowerCase() !== MD_EXT) rejected.push(`${arg}（不是 .md 文件）`);
-        else if (!fs.existsSync(full) || !fs.statSync(full).isFile()) rejected.push(`${arg}（文件不存在）`);
+        if (!inside) rejected.push(t('directives.check.outsideProject', { arg }));
+        else if (path.extname(full).toLowerCase() !== MD_EXT) rejected.push(t('directives.check.notMarkdown', { arg }));
+        else if (!fs.existsSync(full) || !fs.statSync(full).isFile()) rejected.push(t('directives.check.noFile', { arg }));
         else files.push(full);
     }
     return { files, rejected };
 }
 
-// ── 工具 ──
+// ── Helpers ──
 
-/** 去掉 frontmatter 但保留换行，行号和原文件对得上 */
+/** Strip the frontmatter but keep its line breaks, so line numbers match the original file */
 function blankFrontmatter(src) {
     const m = src.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/);
     return m ? m[0].replace(/[^\n]/g, '') + src.slice(m[0].length) : src;
@@ -85,7 +86,7 @@ function blankFrontmatter(src) {
 
 const slice = (src, node) => src.slice(node.position.start.offset, node.position.end.offset);
 
-/** 表格单元格的原文，去掉两边的竖线 */
+/** Raw text of a table cell, without the pipes on either side */
 const cellText = (src, cell) => slice(src, cell).trim().replace(/^\|/, '').replace(/\|$/, '').trim();
 
 function levenshtein(a, b) {
@@ -105,12 +106,12 @@ function suggest(name) {
         const dist = levenshtein(name.toLowerCase(), d.name);
         if (dist <= 2 && (!best || dist < best.dist)) best = { name: d.name, dist };
     }
-    return best ? `，是不是 ${best.name}？` : '';
+    return best ? t('directives.check.didYouMean', { name: best.name }) : '';
 }
 
-const quoteList = (items) => items.map((v) => `"${v}"`).join('、');
+const quoteList = (items) => items.map((v) => `"${v}"`).join(listSep());
 
-/** 第一个 label 段落是 [方括号] 里的内容，不算正文 */
+/** The first label paragraph is the content inside [square brackets], not part of the body */
 const bodyChildren = (node) => (node.children || []).filter((c) => !c.data?.directiveLabel);
 
 function findFirst(node, type) {
@@ -121,24 +122,24 @@ function findFirst(node, type) {
     return found;
 }
 
-// ── 属性 ──
+// ── Attributes ──
 
 function checkValue(spec, value) {
     const v = String(value);
     switch (spec.type) {
         case 'boolean':
-            return v === '' || v === 'true' || v === 'false' ? '' : '只能写 "true" 或 "false"';
+            return v === '' || v === 'true' || v === 'false' ? '' : t('directives.check.onlyBoolean');
         case 'enum':
-            return spec.values.includes(v) ? '' : `只能是 ${quoteList(spec.values)}`;
+            return spec.values.includes(v) ? '' : t('directives.check.onlyValues', { values: quoteList(spec.values) });
         case 'list': {
             const bad = v.split(',').map((s) => s.trim()).filter((s) => s && !spec.values.includes(s));
-            return bad.length ? `里的 ${quoteList(bad)} 不认识，可选 ${quoteList(spec.values)}` : '';
+            return bad.length ? t('directives.check.unknownValues', { bad: quoteList(bad), values: quoteList(spec.values) }) : '';
         }
         case 'color':
             if (NAMED_COLORS.includes(v)) return '';
-            return /[;<>"'{}\\]/.test(v) ? '不是合法的颜色，会被换成默认色' : '';
+            return /[;<>"'{}\\]/.test(v) ? t('directives.check.badColor') : '';
         default:
-            if (spec.pattern && v !== '' && !new RegExp(spec.pattern).test(v)) return `格式应为 ${spec.format || spec.pattern}`;
+            if (spec.pattern && v !== '' && !new RegExp(spec.pattern).test(v)) return t('directives.check.badFormat', { format: spec.format || spec.pattern });
             return '';
     }
 }
@@ -149,22 +150,22 @@ function checkAttrs(spec, node, report) {
     for (const [key, value] of Object.entries(attrs)) {
         const attrSpec = spec.attrs[key];
         if (!attrSpec) {
-            const hint = known.length ? `，可用属性：${known.join('、')}` : '，它没有属性';
-            report('error', `${spec.name} 没有 ${key} 属性${hint}`);
+            const hint = known.length ? t('directives.check.availableAttrs', { list: known.join(listSep()) }) : t('directives.check.noAttrs');
+            report('error', t('directives.check.unknownAttr', { name: spec.name, key, hint }));
             continue;
         }
         const problem = checkValue(attrSpec, value);
-        if (problem) report('error', `${spec.name} 的 ${key}="${value}" ${problem}`);
+        if (problem) report('error', t('directives.check.attrProblem', { name: spec.name, key, value, problem }));
     }
     for (const [key, attrSpec] of Object.entries(spec.attrs)) {
-        if (attrSpec.required && !attrs[key]) report('error', `${spec.name} 缺少必填属性 ${key}`);
+        if (attrSpec.required && !attrs[key]) report('error', t('directives.check.missingAttr', { name: spec.name, key }));
     }
     for (const group of spec.oneOf || []) {
-        if (!group.some((key) => attrs[key])) report('error', `${spec.name} 至少要写 ${group.join('、')} 中的一个`);
+        if (!group.some((key) => attrs[key])) report('error', t('directives.check.oneOf', { name: spec.name, list: group.join(listSep()) }));
     }
 }
 
-// ── 正文 ──
+// ── Body ──
 
 function hasContent(node) {
     return bodyChildren(node).some((c) => c.type !== 'html' || c.value.trim());
@@ -176,36 +177,36 @@ function checkMarkers(marker) {
         const isMarker = (c) => c.type === 'paragraph' && slice(src, c).trim().startsWith(marker);
         const first = children.findIndex(isMarker);
         if (first === -1) {
-            report('error', `${node.name} 里没有 \`${marker}\` 行，${marker} 要单独一行、前后空行`);
+            report('error', t('directives.check.noMarker', { name: node.name, marker }));
         } else if (children.slice(0, first).some((c) => c.type !== 'html' || c.value.trim())) {
-            report('warn', `${node.name} 第一个 \`${marker}\` 之前的内容会被丢掉`);
+            report('warn', t('directives.check.beforeMarker', { name: node.name, marker }));
         }
     };
 }
 
 const BODY_CHECKS = {
     none(node, src, report) {
-        if (hasContent(node)) report('warn', `${node.name} 没有正文，写在里面的内容会被忽略`);
+        if (hasContent(node)) report('warn', t('directives.check.noBody', { name: node.name }));
     },
     list(node, src, report) {
-        if (!findFirst(node, 'list')) report('error', `${node.name} 的正文要写成列表`);
+        if (!findFirst(node, 'list')) report('error', t('directives.check.needsList', { name: node.name }));
     },
     images(node, src, report) {
-        if (!findFirst(node, 'image')) report('warn', `${node.name} 里没有图片，图片写成 ![说明](地址)`);
+        if (!findFirst(node, 'image')) report('warn', t('directives.check.noImages', { name: node.name }));
     },
     table(node, src, report, spec) {
         const table = findFirst(node, 'table');
         if (!table) {
-            report('error', `${node.name} 的正文要有一个表格`);
+            report('error', t('directives.check.needsTable', { name: node.name }));
             return;
         }
         const header = table.children[0]?.children.map((cell) => cellText(src, cell).toLowerCase()) || [];
         for (const col of spec.body.requiredColumns || []) {
-            if (!header.includes(col)) report('error', `${node.name} 的表格缺少 ${col} 列`);
+            if (!header.includes(col)) report('error', t('directives.check.missingColumn', { name: node.name, col }));
         }
     },
     json(node, src, report) {
-        // 和 charts.mjs 一样取原文：有代码块用代码块，否则拼接所有文本节点
+        // Get the raw text the same way charts.mjs does: use the code block if there is one, otherwise join all text nodes
         const code = bodyChildren(node).find((c) => c.type === 'code');
         let raw = '';
         if (code) raw = code.value || '';
@@ -214,7 +215,7 @@ const BODY_CHECKS = {
         try {
             JSON.parse(raw);
         } catch (e) {
-            report('error', `${node.name} 的正文不是合法 JSON：${e.message}`);
+            report('error', t('directives.check.badJson', { name: node.name, error: e.message }));
         }
     },
 };
@@ -225,12 +226,12 @@ const NAMED_CHECKS = {
     timeline(node, src, report) {
         visit({ type: 'root', children: bodyChildren(node) }, 'listItem', (item) => {
             const text = slice(src, item).replace(/^\s*[-*+]\s*/, '');
-            if (text.split('|').length < 2) report('warn', `timeline 的这一项没有 \`|\`，会被丢掉：${text.split('\n')[0].trim()}`, item);
+            if (text.split('|').length < 2) report('warn', t('directives.check.timelineNoPipe', { text: text.split('\n')[0].trim() }), item);
             return 'skip';
         });
     },
     okr(node, src, report) {
-        if (!findFirst(node, 'heading')) report('error', 'okr 的每个目标要用 `## 目标` 标题开头');
+        if (!findFirst(node, 'heading')) report('error', t('directives.check.okrHeading'));
     },
     plan(node, src, report) {
         const attrs = node.attributes || {};
@@ -240,21 +241,21 @@ const NAMED_CHECKS = {
                 const header = cellText(src, cell);
                 if (!header.includes(':')) continue;
                 const type = header.split(':')[1].trim().toLowerCase();
-                if (!PLAN_COLUMN_TYPES.has(type)) report('warn', `plan 的列「${header}」类型 ${type} 不认识，会按 text 显示`, cell);
+                if (!PLAN_COLUMN_TYPES.has(type)) report('warn', t('directives.check.planColumnType', { header, type }), cell);
             }
         }
         const views = (attrs.views || 'board,list,table,timeline,milestone,progress').split(',').map((s) => s.trim());
         for (const view of views) {
             const need = PLAN_VIEW_NEEDS[view]?.(attrs);
-            if (need) report('warn', `plan 的 ${view} 视图需要 ${need}，没写会被隐藏`);
+            if (need) report('warn', t('directives.check.planViewNeeds', { view, need }));
         }
     },
     photo(node, src, report) {
-        if (!(node.attributes || {}).src && !findFirst(node, 'image')) report('error', 'photo 要写 src，或者在正文里放一张图');
+        if (!(node.attributes || {}).src && !findFirst(node, 'image')) report('error', t('directives.check.photoSrc'));
     },
 };
 
-// ── 主流程 ──
+// ── Main flow ──
 
 function checkFile(file) {
     const raw = fs.readFileSync(file, 'utf-8');
@@ -283,14 +284,14 @@ function checkFile(file) {
 
         const spec = DIRECTIVE_MAP.get(node.name);
         if (!spec) {
-            if (form !== 'text') report('error', `未知指令 ${node.name}${suggest(node.name)}`);
+            if (form !== 'text') report('error', t('directives.check.unknownDirective', { name: node.name, suggestion: suggest(node.name) }));
             return;
         }
         if (!spec.forms.includes(form)) {
-            // 已登记的名字被写成行内（比如 a:video），渲染时会还原成原文，不算错
+            // A registered name written as a text directive (e.g. a:video) renders back as the original text, so it is not an error
             if (form !== 'text') {
-                const allowed = spec.forms.map((f) => FORM_SYNTAX[f](spec.name)).join(' 或 ');
-                report('error', `${spec.name} 不能写成 ${FORM_SYNTAX[form](spec.name)}，要写成 ${allowed}`);
+                const allowed = spec.forms.map((f) => FORM_SYNTAX[f](spec.name)).join(t('common.or'));
+                report('error', t('directives.check.wrongForm', { name: spec.name, form: FORM_SYNTAX[form](spec.name), allowed }));
             }
             return;
         }
@@ -301,26 +302,26 @@ function checkFile(file) {
             const open = lines[node.position.start.line - 1].match(/:{3,}/)?.[0].length ?? 3;
             const close = lines[node.position.end.line - 1].match(/^[\s>]*(:{3,})\s*$/);
             if (node.position.end.line === node.position.start.line || !close || close[1].length < open) {
-                report('error', `${spec.name} 没有闭合，要单独一行写 ${':'.repeat(open)}`);
+                report('error', t('directives.check.unclosed', { name: spec.name, colons: ':'.repeat(open) }));
             }
             BODY_CHECKS[spec.body?.kind]?.(node, src, report, spec);
             NAMED_CHECKS[spec.name]?.(node, src, report);
         }
     });
 
-    // 以冒号加名字开头、却没被解析成指令的行
+    // Lines that start with colons plus a name but were not parsed as a directive
     lines.forEach((text, i) => {
         const line = i + 1;
         if (skipLines.has(line) || directiveLines.has(line)) return;
         const spaced = text.match(/^[\s>]*(:{2,})\s+([a-zA-Z][\w-]*)/);
         if (spaced && DIRECTIVE_MAP.has(spaced[2])) {
-            problems.push({ level: 'error', line, column: 1, message: `${spaced[1]} 和 ${spaced[2]} 之间不能有空格` });
+            problems.push({ level: 'error', line, column: 1, message: t('directives.check.spaceAfterColons', { colons: spaced[1], name: spaced[2] }) });
             return;
         }
         const m = text.match(/^[\s>]*:{2,}([a-zA-Z][\w-]*)/);
         if (!m || !DIRECTIVE_MAP.has(m[1])) return;
-        const reason = text.includes('{') && !text.includes('}') ? '属性要全部写在这一行' : '前面要空一行，属性和引号要成对';
-        problems.push({ level: 'error', line, column: 1, message: `这一行没有被识别成 ${m[1]} 指令：${reason}` });
+        const reason = text.includes('{') && !text.includes('}') ? t('directives.check.attrsOneLine') : t('directives.check.blankLineBefore');
+        problems.push({ level: 'error', line, column: 1, message: t('directives.check.notRecognized', { name: m[1], reason }) });
     });
 
     return problems.sort((a, b) => a.line - b.line || a.column - b.column);
@@ -328,7 +329,7 @@ function checkFile(file) {
 
 const args = process.argv.slice(2);
 const { files, rejected } = args.length ? resolveArgs(args) : { files: walk(CONTENT_DIR), rejected: [] };
-for (const r of rejected) console.error(`跳过 ${r}`);
+for (const r of rejected) console.error(t('directives.check.skipped', { item: r }));
 
 let errors = 0;
 let warnings = 0;
@@ -336,9 +337,15 @@ for (const file of files) {
     for (const p of checkFile(file)) {
         if (p.level === 'error') errors++;
         else warnings++;
-        console.log(`${path.relative(ROOT, file)}:${p.line}:${p.column}  ${p.level === 'error' ? '错误' : '提示'}  ${p.message}`);
+        console.log(`${path.relative(ROOT, file)}:${p.line}:${p.column}  ${t(p.level === 'error' ? 'directives.check.error' : 'directives.check.warning')}  ${p.message}`);
     }
 }
 
-console.log(`\n检查了 ${files.length} 个文件：${errors} 个错误，${warnings} 个提示。`);
+console.log(
+    `\n${t('directives.check.summary', {
+        files: t('directives.check.files', { count: files.length }),
+        errors: t('directives.check.errors', { count: errors }),
+        warnings: t('directives.check.warnings', { count: warnings }),
+    })}`
+);
 if (errors > 0 || rejected.length > 0) process.exit(1);

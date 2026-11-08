@@ -1,33 +1,55 @@
 #!/usr/bin/env node
 /**
- * 把演示内容清空，留一个干净的起点。
+ * Clears out the demo content, leaving a clean starting point.
  *
- * Vergil 的仓库同时是主题源码和它自己的演示站，所以 clone 下来会自带
- * 十几篇文章、两套示例文档、几个相册。自己用的时候这些都该删掉，
- * 但手动删很容易漏——配置里还散落着示例用的站点名、导航、友链。
+ * The Vergil repo is both the theme source and its own demo site, so a clone comes with
+ * a dozen or so posts, two sets of sample docs, and a few albums. All of these should go when you use it yourself,
+ * but deleting them by hand makes it easy to miss things: the config is also scattered with the sample site name, nav, and friend links.
  *
- * 跑一次 `vg reset` 就全清了。
+ * Running `vg reset` once clears it all.
  *
- * 默认保留 Vergil 官方文档（src/content/docs/vergil-guide），因为它就是
- * 使用说明，删了之后站内就查不到指令怎么写了。要一并删除加 --all。
+ * The official Vergil docs (src/content/docs/vergil-guide) are kept by default, because they are
+ * the user guide; without them there is no way to look up directive syntax on the site. Add --all to delete them too.
  *
- * 加 --dry 只打印将要做什么，不实际改动。
+ * Add --dry to only print what would be done, without changing anything.
+ *
+ * What it prints follows the user's language (see i18n.mjs). The placeholder content and config it
+ * writes into the site stay as they are: they are site content, not messages.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { t } from './i18n.mjs';
 
 const DRY = process.argv.includes('--dry');
 const ALL = process.argv.includes('--all');
 const ROOT = process.cwd();
 
-const log = (icon, msg) => console.log(`  ${icon} ${msg}`);
+/**
+ * Where the config files written below import the theme's types from. A site on the theme
+ * package (1.x) gets them from @vergil-astro/theme/types; an old template-style site (0.x)
+ * carries the theme source itself, with the types in src/types.
+ */
+function themeTypesModule() {
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+        if (pkg.dependencies?.['@vergil-astro/theme'] || pkg.devDependencies?.['@vergil-astro/theme']) return '@vergil-astro/theme/types';
+    } catch {
+        // No readable package.json: treat it as a template-style site
+    }
+    return '../../types';
+}
+const THEME_TYPES = themeTypesModule();
+
+// Action labels padded to the same width, so the paths line up
+const LABEL_WIDTH = Math.max(...['reset.delete', 'reset.rewrite', 'reset.empty'].map((k) => t(k).length));
+const log = (label, msg) => console.log(`  ${t(label).padEnd(LABEL_WIDTH)} ${msg}`);
 
 function rm(rel) {
     const abs = path.join(ROOT, rel);
     if (!fs.existsSync(abs)) return false;
     if (!DRY) fs.rmSync(abs, { recursive: true, force: true });
-    log('删除', rel);
+    log('reset.delete', rel);
     return true;
 }
 
@@ -37,10 +59,10 @@ function write(rel, content) {
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, content, 'utf-8');
     }
-    log('重写', rel);
+    log('reset.rewrite', rel);
 }
 
-/** 清空目录里的内容文件，保留目录本身 */
+/** Empty the content files in a directory, keeping the directory itself */
 function empty(rel, exts = ['.md', '.mdx', '.json']) {
     const abs = path.join(ROOT, rel);
     if (!fs.existsSync(abs)) return;
@@ -52,13 +74,13 @@ function empty(rel, exts = ['.md', '.mdx', '.json']) {
             n++;
         }
     }
-    if (n) log('清空', `${rel}  (${n} 项)`);
+    if (n) log('reset.empty', t('reset.items', { path: rel, count: n }));
 }
 
-console.log(DRY ? '\n预演模式，不会真的改动文件\n' : '\n开始清理演示内容\n');
+console.log(`\n${t(DRY ? 'reset.dryRun' : 'reset.start')}\n`);
 
-// ── 内容 ──
-console.log('内容');
+// ── Content ──
+console.log(t('reset.content'));
 empty('src/content/blog');
 empty('src/content/moments');
 empty('src/content/thoughts');
@@ -69,7 +91,7 @@ rm('src/content/docs/kubernetes');
 rm('src/content/docs/react-guide');
 if (ALL) rm('src/content/docs/vergil-guide');
 
-// pages 里 contact/terms 是有用的骨架，只清掉正文
+// contact/terms in pages are useful skeletons, so only clear the body
 write(
     'src/content/pages/about.md',
     `---
@@ -84,7 +106,7 @@ seo:
 删掉这段话，换成你想说的。
 `
 );
-// 导航和页脚都链到 /contact，删掉会留下 404，所以只清正文
+// The nav and footer both link to /contact; deleting it would leave a 404, so only clear the body
 write(
     'src/content/pages/contact.md',
     `---
@@ -127,7 +149,7 @@ seo:
 `
 );
 
-// 简历留一个空骨架
+// Leave an empty skeleton for the resume
 write(
     'src/content/resume/index.md',
     `---
@@ -140,9 +162,9 @@ sections: []
 `
 );
 
-// ── 素材 ──
-console.log('\n素材');
-// 内容图片按 src/assets/img/<载体>/<内容名>/ 存放，跟着上面清掉的内容一起删。
+// ── Assets ──
+console.log(`\n${t('reset.assets')}`);
+// Content images live in src/assets/img/<carrier>/<content-name>/ and are deleted along with the content cleared above.
 rm('src/assets/img/blog');
 rm('src/assets/img/projects');
 rm('src/assets/img/albums');
@@ -152,12 +174,45 @@ rm('src/assets/img/docs/react-guide');
 if (ALL) rm('src/assets/img/docs/vergil-guide');
 rm('src/assets/videos');
 
-// ── 配置 ──
-console.log('\n配置');
+/**
+ * Settings a reset keeps from the site's current identity.ts: the UI language and the skins. They
+ * are the site's choices, not sample content; rewriting them would switch an English site back to
+ * Chinese and drop the skins it enabled. Values are read as plain names and written back rebuilt,
+ * never copied as code; anything that doesn't look like a name falls back to the default.
+ */
+function keptIdentity() {
+    let text = '';
+    try {
+        text = fs.readFileSync(path.join(ROOT, 'src/data/config/identity.ts'), 'utf8');
+    } catch {
+        // No identity.ts yet: use the defaults
+    }
+    const NAME = /^[A-Za-z0-9_-]+$/;
+    const pick = (re) => {
+        const value = text.match(re)?.[1];
+        return value && NAME.test(value) ? value : null;
+    };
+    const skinsList = text.match(/^\s*skins:\s*\[([^\]\n]*)\]/m)?.[1] ?? '';
+    return {
+        locale: pick(/^\s*locale:\s*['"]([^'"\n]*)['"]/m) ?? 'zh-CN',
+        skin: pick(/^\s*skin:\s*['"]([^'"\n]*)['"]/m) ?? 'classic',
+        skins: [...skinsList.matchAll(/['"]([A-Za-z0-9_-]+)['"]/g)].map((m) => `'${m[1]}'`).join(', '),
+    };
+}
+
+// ── Config ──
+console.log(`\n${t('reset.config')}`);
+const KEPT = keptIdentity();
 const IDENTITY = `export const siteInfo = {
     title: '你的站点名',
     /** 主题界面文案的语言，也决定 <html lang> 和日期格式。可选 'zh-CN' | 'en' */
-    locale: 'zh-CN',
+    locale: '${KEPT.locale}',
+    /** 访客没选过时用哪个界面皮肤。皮肤决定圆角、按钮、投影、底纹这些形状质感，每个皮肤带着自己的几套配色，
+     * 访客可以在顶栏的外观面板里自己切换。classic 是内置的，其他皮肤要先在下面的 skins 里启用 */
+    skin: '${KEPT.skin}',
+    /** 启用的皮肤，像 zsh 的 plugins 一样按名字写。每个皮肤要先放到站点根目录的 skins/<名字>/ 下，
+     * 没放的会跳过并在构建时警告。皮肤集中在 vergil-astro/vergil-skins 仓库，用 vg skin add <名字> 安装并启用 */
+    skins: [${KEPT.skins}] as string[],
     subtitle: '一句话副标题',
     description: '用一两句话说明这个站点是关于什么的，会用在 SEO 和分享卡片上。',
     image: {
@@ -224,10 +279,10 @@ export const screenshotService = 'mshots';
 `
 );
 
-// 右侧栏两张 Memo 卡片，默认写的是 Vergil 演示站的自我介绍
+// The two Memo cards in the right sidebar; by default they hold the Vergil demo site's self-introduction
 write(
     'src/data/config/welcome.ts',
-    `import type { MemoItem } from '../../types';
+    `import type { MemoItem } from '${THEME_TYPES}';
 
 /**
  * 右侧栏的第一张 Memo 便签卡片。内容完全由你决定。
@@ -244,7 +299,7 @@ export const welcome = {
 
 write(
     'src/data/config/notice.ts',
-    `import type { MemoItem } from '../../types';
+    `import type { MemoItem } from '${THEME_TYPES}';
 
 /**
  * 右侧栏的第二张 Memo 便签卡片。想加更多卡片，照这个文件新建一个，
@@ -259,10 +314,7 @@ export const notice = {
 `
 );
 
-console.log('\n完成。接下来：');
-console.log('  1. 编辑 src/data/config/identity.ts 填上你的站点信息');
-console.log('  2. 编辑 src/data/site-config.ts 把 website 改成你的域名');
-console.log('  3. 编辑 src/data/config/nav.ts 调整导航菜单');
-console.log('  4. 在 src/content/blog/ 下新建第一篇文章');
-console.log('  5. pnpm dev\n');
-if (DRY) console.log('（以上都没有真的执行，去掉 --dry 才会生效）\n');
+console.log(`\n${t('reset.done')}`);
+for (const step of ['reset.step1', 'reset.step2', 'reset.step3', 'reset.step4']) console.log(`  ${t(step)}`);
+console.log(`  ${t('reset.step5')}\n`);
+if (DRY) console.log(`${t('reset.dryNote')}\n`);

@@ -6,6 +6,7 @@ import ora from 'ora';
 import type { InitOptions } from '../types.js';
 import { C } from '../utils/helpers.js';
 import { fail } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 import { allowBuildsBlock } from '../utils/pnpm-settings.js';
 
 /** owner/repo on GitHub; anything else could smuggle extra arguments into git */
@@ -24,16 +25,16 @@ export async function initCommand(dir: string | undefined, options: InitOptions)
   // `vg init my-site` creates the folder, like `hexo init`; plain `vg init` uses the current one
   const targetDir = dir === undefined ? process.cwd() : siteFolder(dir);
   if (!targetDir) {
-    return fail(`The site folder must be inside the current directory: ${dir}`, 'Go to where the site should live, then run: vg init my-site');
+    return fail(t('init.outsideCwd', { dir: String(dir) }), t('init.outsideCwdHint'));
   }
   const cdInto = targetDir === process.cwd() ? null : relative(process.cwd(), targetDir);
   if (existsSync(targetDir) && !statSync(targetDir).isDirectory()) {
-    return fail(`Not a folder: ${cdInto}`);
+    return fail(t('init.notFolder', { path: String(cdInto) }));
   }
 
   // Already initialized — treat as success
   if (existsSync(join(targetDir, 'package.json')) && existsSync(join(targetDir, 'astro.config.mjs'))) {
-    console.log(C.success('✓ Vergil project already initialized.\n'));
+    console.log(C.success(`${t('init.alreadyDone')}\n`));
     printNextSteps(cdInto);
     return;
   }
@@ -41,21 +42,21 @@ export async function initCommand(dir: string | undefined, options: InitOptions)
   // Partial / unrelated project — prevent overwriting
   if (existsSync(join(targetDir, 'package.json'))) {
     return fail(
-      `${cdInto ? `The folder ${cdInto}` : 'Current directory'} already contains a project.`,
-      'Run `vg init` in an empty folder, or give a new folder name: vg init my-site',
+      cdInto ? t('init.folderHasProject', { dir: cdInto }) : t('init.cwdHasProject'),
+      t('init.hasProjectHint'),
     );
   }
 
   const template = options.template || 'vergil-astro/vergil-astro-theme';
   if (!options.from && (!TEMPLATE_RE.test(template) || template.split('/').some(part => part === '.' || part === '..'))) {
-    return fail(`--template must be a GitHub repo written as owner/repo: ${template}`);
+    return fail(t('init.badTemplate', { template }));
   }
   if (options.ref && !REF_RE.test(options.ref)) {
-    return fail(`--ref must be a tag, branch or commit: ${options.ref}`);
+    return fail(t('init.badRef', { ref: options.ref }));
   }
 
   const spinner = ora({
-    text: C.muted('Initializing Vergil project...'),
+    text: C.muted(t('init.spinner')),
     spinner: 'dots',
     color: 'yellow',
   }).start();
@@ -67,7 +68,7 @@ export async function initCommand(dir: string | undefined, options: InitOptions)
     let repoDir: string;
     if (options.from) {
       repoDir = resolve(options.from);
-      if (!existsSync(join(repoDir, 'package.json'))) throw new Error(`--from is not a theme checkout: ${repoDir}`);
+      if (!existsSync(join(repoDir, 'package.json'))) throw new Error(t('init.notCheckout', { dir: repoDir }));
     } else {
       const ref = options.ref ?? latestReleaseTag(template);
       tmp = mkdtempSync(join(tmpdir(), 'vergil-init-'));
@@ -87,33 +88,33 @@ export async function initCommand(dir: string | undefined, options: InitOptions)
       copySite(starter, targetDir);
       wirePackage(targetDir, options.theme ?? themeRange(repoDir));
       writePnpmSettings(repoDir, targetDir);
-      spinner.succeed(C.success('✓ Site created from the starter'));
+      spinner.succeed(C.success(t('init.fromStarter')));
     } else {
       // Theme versions before the npm package: the repo itself is the site
       copySite(repoDir, targetDir);
-      spinner.succeed(C.success('✓ Template copied'));
+      spinner.succeed(C.success(t('init.templateCopied')));
     }
 
     // Install dependencies
     if (!options.skipInstall) {
       const installSpinner = ora({
-        text: C.muted('Installing dependencies...'),
+        text: C.muted(t('init.installing')),
         spinner: 'dots',
         color: 'yellow',
       }).start();
 
       try {
         execFileSync('pnpm', ['install'], { cwd: targetDir, stdio: 'ignore' });
-        installSpinner.succeed(C.success('✓ Dependencies installed'));
+        installSpinner.succeed(C.success(t('init.installed')));
       } catch {
-        installSpinner.warn(C.warning('⚠ pnpm install failed, try running it manually'));
+        installSpinner.warn(C.warning(t('init.installFailed')));
       }
     }
 
     // Start dev server
     if (!options.skipServe) {
-      if (cdInto) console.log(C.muted(`\n  The site is in ${cdInto}/; afterwards: cd ${cdInto}`));
-      console.log(C.accent('\n  Starting dev server...'));
+      if (cdInto) console.log(C.muted(`\n  ${t('init.siteIn', { dir: cdInto })}`));
+      console.log(C.accent(`\n  ${t('init.startingServer')}`));
       const child = spawn('pnpm', ['astro', 'dev'], {
         cwd: targetDir,
         stdio: 'inherit',
@@ -121,14 +122,14 @@ export async function initCommand(dir: string | undefined, options: InitOptions)
       });
 
       child.on('exit', (code: number | null) => {
-        if (code !== 0 && code !== null) fail(`Server exited with code ${code}`);
+        if (code !== 0 && code !== null) fail(t('common.serverExited', { code }));
       });
     } else {
       printNextSteps(cdInto);
     }
 
   } catch (e) {
-    spinner.fail(C.error('Failed to initialize project'));
+    spinner.fail(C.error(t('init.failed')));
     // The folder was made by this run moments ago; don't leave half a site in it
     if (created) rmSync(targetDir, { recursive: true, force: true });
     fail(e instanceof Error ? e.message : String(e));
@@ -200,9 +201,9 @@ export function pickReleaseTag(tags: string[]): string | null {
 }
 
 function printNextSteps(cdInto: string | null): void {
-  console.log(`\n${C.subtitle('Next steps:')}`);
+  console.log(`\n${C.subtitle(t('init.nextSteps'))}`);
   if (cdInto) console.log(`  ${C.accent(`cd ${cdInto}`)}`);
-  console.log(`  ${C.accent('vg reset')}               ${C.muted('← clear the sample content (vg reset --dry to preview)')}`);
-  console.log(`  ${C.accent('vg new post')} "Hello"     ${C.muted('← write your first post')}`);
-  console.log(`  ${C.accent('vg serve')}               ${C.muted('← start dev server')}`);
+  console.log(`  ${C.accent('vg reset')}               ${C.muted(t('init.stepReset'))}`);
+  console.log(`  ${C.accent('vg new post')} "Hello"     ${C.muted(t('init.stepNewPost'))}`);
+  console.log(`  ${C.accent('vg serve')}               ${C.muted(t('init.stepServe'))}`);
 }

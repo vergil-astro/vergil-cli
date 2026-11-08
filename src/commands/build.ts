@@ -3,7 +3,8 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
-import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 
 export function detectPackageManager(root: string): string {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
@@ -14,10 +15,10 @@ export function detectPackageManager(root: string): string {
 
 export async function buildCommand(): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const pm = detectPackageManager(root);
-  console.log(C.accent('Building for production...'));
+  console.log(C.accent(t('common.buildingProduction')));
 
   try {
     // The theme's build script tidies images before `astro build`
@@ -26,9 +27,9 @@ export async function buildCommand(): Promise<void> {
       stdio: 'inherit',
       shell: true,
     } as unknown as Parameters<typeof execSync>[1]);
-    console.log(C.success('✓ Build complete'));
-    console.log(C.muted('  Output: dist/'));
+    console.log(C.success(t('build.complete')));
+    console.log(C.muted(`  ${t('build.output')}`));
   } catch {
-    fail('Build failed', 'The build output above has the details.');
+    fail(t('build.failed'), t('common.buildOutputHint'));
   }
 }

@@ -1,20 +1,41 @@
 /**
- * 读站点所用主题的指令规则（schema.mjs），保证 vg 的检查和站点实际装的主题版本一致。
- * 先找站点装的 npm 包 @vergil-astro/theme；找不到时退回旧的模板式站点（主题源码直接在站点的 src/ 里）。
+ * Reads the directive rules (schema.mjs) of the theme the site uses, so vg's checks match the theme version the site actually has installed.
+ * Looks for the site's installed npm package @vergil-astro/theme first; if it is not found, falls back to the old template-style site (theme source directly in the site's src/).
+ *
+ * Same approach as src/utils/theme.ts: find the package directory through the theme package's main entry, then read the files under src/
+ * without going through @vergil-astro/theme/<subpath>, so however the theme adjusts its exports, vg is not affected.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { t } from './i18n.mjs';
 
-export async function loadDirectiveSchema(root = process.cwd()) {
+const THEME = '@vergil-astro/theme';
+const SCHEMA = 'plugins/directives/schema.mjs';
+
+function themePackageDir(root) {
     try {
         const require = createRequire(path.join(root, 'package.json'));
-        const file = require.resolve('@vergil-astro/theme/plugins/directives/schema.mjs');
-        return await import(pathToFileURL(file).href);
+        let dir = path.dirname(require.resolve(THEME));
+        for (;;) {
+            const pkg = path.join(dir, 'package.json');
+            if (existsSync(pkg) && JSON.parse(readFileSync(pkg, 'utf8')).name === THEME) return dir;
+            const parent = path.dirname(dir);
+            if (parent === dir) break;
+            dir = parent;
+        }
     } catch {}
-    const legacy = path.join(root, 'src/plugins/directives/schema.mjs');
-    if (existsSync(legacy)) return import(pathToFileURL(legacy).href);
-    console.error('找不到主题的指令规则：当前站点没有安装 @vergil-astro/theme。');
+    const direct = path.join(root, 'node_modules', '@vergil-astro', 'theme');
+    return existsSync(path.join(direct, 'package.json')) ? direct : null;
+}
+
+export async function loadDirectiveSchema(root = process.cwd()) {
+    const pkgDir = themePackageDir(root);
+    const candidates = [pkgDir && path.join(pkgDir, 'src', SCHEMA), path.join(root, 'src', SCHEMA)].filter(Boolean);
+    for (const file of candidates) {
+        if (existsSync(file)) return import(pathToFileURL(file).href);
+    }
+    console.error(t('schema.notFound'));
     process.exit(1);
 }

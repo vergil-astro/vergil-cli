@@ -5,7 +5,8 @@ import { formatDate, ensureDir, getProjectRoot, getNextIndex, slugify, listMarkd
 import { generateFrontmatter } from '../utils/frontmatter.js';
 import { loadSeriesDefs, findSeriesDef } from '../utils/series.js';
 import { C } from '../utils/helpers.js';
-import { fail, warn, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite, warn, sitePath } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 import type { NewOptions, ContentType } from '../types.js';
 
 const CONTENT_DIRS: Record<ContentType, string> = {
@@ -65,7 +66,7 @@ function projectLinks(options: NewOptions): string | null {
   const lines: string[] = [];
   if (options.website) {
     if (!isHttpUrl(options.website)) {
-      fail(`--website must be an http(s) URL: ${options.website}`);
+      fail(t('new.badWebsite', { url: options.website }));
       return null;
     }
     lines.push(`:button[访问网站]{href="${options.website}" icon="lucide:globe"}\n`);
@@ -73,7 +74,7 @@ function projectLinks(options: NewOptions): string | null {
   if (options.repo) {
     const repo = toRepoSlug(options.repo);
     if (!repo) {
-      fail(`--repo must be owner/repo or a github.com URL: ${options.repo}`);
+      fail(t('new.badRepo', { repo: options.repo }));
       return null;
     }
     lines.push(`:::ghcard{type="repo" repo="${repo}"}\n:::\n`);
@@ -120,7 +121,7 @@ function registeredDirs(metaPath: string): string[] {
 function createDoc(root: string, contentDir: string, title: string, slug: string, options: NewOptions): void {
   const segments = safeSegments(options.path || '');
   if (!segments) {
-    fail(`Invalid --path: ${options.path}`);
+    fail(t('new.badPath', { path: String(options.path) }));
     return;
   }
 
@@ -130,7 +131,7 @@ function createDoc(root: string, contentDir: string, title: string, slug: string
   const filepath = join(targetDir, `${slug}.md`);
 
   if (existsSync(filepath)) {
-    fail(`File already exists: ${sitePath(root, filepath)}`);
+    fail(t('new.fileExists', { path: sitePath(root, filepath) }));
     return;
   }
 
@@ -139,7 +140,7 @@ function createDoc(root: string, contentDir: string, title: string, slug: string
   const metaPath = join(contentDir, bookId, '_meta.md');
   if (!existsSync(metaPath)) {
     writeFileSync(metaPath, `${generateFrontmatter({ title: isNewBook ? title : bookId })}\n`);
-    console.log(C.success(`✓ book created: ${C.accent(sitePath(root, metaPath))}`));
+    console.log(C.success(t('new.bookCreated', { path: C.accent(sitePath(root, metaPath)) })));
   }
 
   const tags = options.tags ? options.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -147,27 +148,26 @@ function createDoc(root: string, contentDir: string, title: string, slug: string
   const fm = generateFrontmatter({ title, ...(isNewBook && { order: 1 }), draft: options.draft || false, tags });
   writeFileSync(filepath, `${fm}\n\n${CONTENT_TEMPLATES.doc}`);
 
-  console.log(C.success(`✓ doc created: ${C.accent(sitePath(root, filepath))}`));
+  console.log(C.success(t('new.created', { type: t('type.doc'), path: C.accent(sitePath(root, filepath)) })));
   if (options.draft) {
-    console.log(C.muted('  Status: draft'));
+    console.log(C.muted(`  ${t('new.statusDraft')}`));
   }
 
   const chapter = segments.slice(1).join('/');
   if (chapter && !registeredDirs(metaPath).includes(chapter.toLowerCase())) {
-    warn(`"${chapter}" is not listed in dirs of ${sitePath(root, metaPath)}`,
-      'The theme only shows docs from folders listed there; add it to make this doc appear in the sidebar.');
+    warn(t('new.dirNotListed', { chapter, meta: sitePath(root, metaPath) }), t('new.dirNotListedHint'));
   }
 }
 
 export async function newCommand(type: string, title: string, options: NewOptions): Promise<void> {
   const root = getProjectRoot();
   if (!root) {
-    return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+    return failNotInSite();
   }
 
   const contentType = type as ContentType;
   if (!CONTENT_DIRS[contentType]) {
-    return fail(`Unknown content type: ${type}`, 'Available: post, page, project, album, thought, moment, doc');
+    return fail(t('new.unknownType', { type }), t('common.available', { list: Object.keys(CONTENT_DIRS).join(', ') }));
   }
 
   const dirName = CONTENT_DIRS[contentType];
@@ -180,7 +180,7 @@ export async function newCommand(type: string, title: string, options: NewOption
   // For thoughts and moments the argument is the content itself, so an
   // unusable slug just falls back to the type name.
   if (!slug && contentType !== 'thought' && contentType !== 'moment') {
-    fail(`Can't derive a filename from title: ${title}`);
+    fail(t('new.noSlug', { title }));
     return;
   }
 
@@ -190,7 +190,7 @@ export async function newCommand(type: string, title: string, options: NewOption
   }
 
   if (contentType === 'album' && options.theme && !ALBUM_THEMES.includes(options.theme)) {
-    fail(`Unknown album theme: ${options.theme} (use ${ALBUM_THEMES.join(' or ')})`);
+    fail(t('new.badAlbumTheme', { theme: options.theme, themes: ALBUM_THEMES.join(t('common.or')) }));
     return;
   }
 
@@ -211,7 +211,7 @@ export async function newCommand(type: string, title: string, options: NewOption
   if (options.path) {
     const segments = safeSegments(options.path);
     if (!segments || segments.length === 0) {
-      fail(`Invalid --path: ${options.path}`);
+      fail(t('new.badPath', { path: options.path }));
       return;
     }
     filename = segments.join('/');
@@ -227,7 +227,7 @@ export async function newCommand(type: string, title: string, options: NewOption
   const filepath = join(targetDir, filename);
 
   if (existsSync(filepath)) {
-    fail(`File already exists: ${sitePath(root, filepath)}`);
+    fail(t('new.fileExists', { path: sitePath(root, filepath) }));
     return;
   }
 
@@ -238,7 +238,7 @@ export async function newCommand(type: string, title: string, options: NewOption
     const clash = listMarkdownFiles(contentDir)
       .find(f => basename(f).replace(/\.mdx?$/, '').toLowerCase() === name);
     if (clash) {
-      fail(`Another post already uses /blog/${name}/: ${sitePath(root, clash)}`);
+      fail(t('new.slugClash', { name, path: sitePath(root, clash) }));
       return;
     }
   }
@@ -256,7 +256,7 @@ export async function newCommand(type: string, title: string, options: NewOption
     };
     writeFileSync(filepath, JSON.stringify(data, null, 2) + '\n');
 
-    console.log(C.success(`✓ moment created: ${C.accent(sitePath(root, filepath))}`));
+    console.log(C.success(t('new.created', { type: t('type.moment'), path: C.accent(sitePath(root, filepath)) })));
     return;
   }
 
@@ -300,9 +300,9 @@ export async function newCommand(type: string, title: string, options: NewOption
 
   writeFileSync(filepath, `${generateFrontmatter(meta)}\n\n${body}`);
 
-  console.log(C.success(`✓ ${contentType} created: ${C.accent(sitePath(root, filepath))}`));
+  console.log(C.success(t('new.created', { type: t(`type.${contentType}`), path: C.accent(sitePath(root, filepath)) })));
 
   if (options.draft && contentType === 'post') {
-    console.log(C.muted('  Status: draft'));
+    console.log(C.muted(`  ${t('new.statusDraft')}`));
   }
 }

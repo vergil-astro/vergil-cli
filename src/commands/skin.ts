@@ -4,7 +4,8 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
-import { canPrompt, fail, warn, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { canPrompt, fail, notInSiteHint, warn } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 import {
   CONTRACT_PATH, IDENTITY_PATH, NAME_RE, SKINS_DIR,
   deriveName, describeSource, installFiles, installedNames, packageDir, parseSource,
@@ -32,12 +33,12 @@ interface Site {
 function requireSite(): Site | null {
   const root = getProjectRoot();
   if (!root) {
-    fail('Not inside a Vergil project', NOT_IN_SITE_HINT);
+    fail(t('skin.notInProject'), notInSiteHint());
     return null;
   }
   const contract = readContract(root);
   if (contract === null) {
-    fail("This site's Vergil version doesn't support skin packages yet", `The theme has no ${CONTRACT_PATH}. Update the theme first.`);
+    fail(t('skin.noContract'), t('skin.noContractHint', { path: CONTRACT_PATH }));
     return null;
   }
   return { root, contract };
@@ -49,7 +50,7 @@ function editIdentity(root: string, edit: (text: string) => string | null, manua
   const text = existsSync(file) ? readFileSync(file, 'utf8') : null;
   const next = text === null ? null : edit(text);
   if (next === null) {
-    warn(`Couldn't update ${IDENTITY_PATH} automatically. ${manual}`);
+    warn(t('skin.identityManual', { path: IDENTITY_PATH, manual }));
     return false;
   }
   if (next !== text) writeFileSync(file, next);
@@ -77,8 +78,8 @@ function takenSchemeIds(root: string, except: string): Map<string, string> {
   return taken;
 }
 
-async function fetchAndInstall(site: Site, name: string, source: Source, verb: string): Promise<boolean> {
-  const spinner = ora(`Fetching ${describeSource(source)}...`).start();
+async function fetchAndInstall(site: Site, name: string, source: Source, mode: 'install' | 'update'): Promise<boolean> {
+  const spinner = ora(t('skin.fetching', { source: describeSource(source) })).start();
   let staged;
   try {
     staged = await stageSource(source);
@@ -93,21 +94,22 @@ async function fetchAndInstall(site: Site, name: string, source: Source, verb: s
 
     const taken = takenSchemeIds(site.root, name);
     for (const id of bundledSchemeIds(readManifest(staged.dir))) {
-      if (taken.has(id)) problems.push(`scheme ID "${id}" is already used by ${taken.get(id)}`);
+      if (taken.has(id)) problems.push(t('skin.schemeTaken', { id, by: String(taken.get(id)) }));
     }
 
     if (problems.length) {
-      spinner.fail(`${describeSource(source)} is not a usable Vergil skin`);
+      spinner.fail(t('skin.notUsable', { source: describeSource(source) }));
       for (const problem of problems) console.error(C.error(`  • ${problem}`));
       process.exitCode = 1;
       return false;
     }
 
     const target = installFiles(site.root, name, staged.dir, scan.files, source);
-    spinner.succeed(`${verb} skin ${C.accent(name)} → ${relative(site.root, target)}/ (${scan.files.length} files)`);
+    const done = { name: C.accent(name), path: relative(site.root, target), files: t('skin.files', { count: scan.files.length }) };
+    spinner.succeed(t(mode === 'install' ? 'skin.installedDone' : 'skin.updatedDone', done));
     if (scan.skipped.length) {
       const preview = scan.skipped.slice(0, 5).join(', ') + (scan.skipped.length > 5 ? ', ...' : '');
-      console.log(C.muted(`  Left out ${scan.skipped.length} file(s) a skin doesn't need: ${preview}`));
+      console.log(C.muted(`  ${t('skin.leftOut', { count: scan.skipped.length, preview })}`));
     }
     return true;
   } catch (error) {
@@ -135,30 +137,30 @@ export async function skinAddCommand(input: string, options: AddOptions): Promis
 
   const name = options.name ?? deriveName(source);
   if (!name || !NAME_RE.test(name)) {
-    fail(`Can't use "${options.name ?? input}" as a skin name`, 'Pass --name <name>: lowercase letters, digits and dashes, starting with a letter');
+    fail(t('skin.badName', { name: options.name ?? input }), t('skin.badNameHint'));
     return;
   }
   if (name === 'classic') {
-    fail('classic is built in and can\'t be replaced', 'Install it under another name with --name');
+    fail(t('skin.classicReplace'), t('skin.classicReplaceHint'));
     return;
   }
   if (existsSync(packageDir(site.root, name)) && !options.force) {
-    fail(`${SKINS_DIR}/${name}/ already exists`, `Run vg skin update ${name}, or add --force to replace it`);
+    fail(t('skin.exists', { path: `${SKINS_DIR}/${name}` }), t('skin.existsHint', { name }));
     return;
   }
 
-  if (!await fetchAndInstall(site, name, source, 'Installed')) return;
+  if (!await fetchAndInstall(site, name, source, 'install')) return;
 
-  const manual = `Add '${name}' to skins in ${IDENTITY_PATH}.`;
+  const manual = t('skin.manualAdd', { name, path: IDENTITY_PATH });
   if (options.enable === false) {
-    console.log(C.muted(`  Not enabled. ${manual}`));
+    console.log(C.muted(`  ${t('skin.notEnabled', { manual })}`));
   } else if (editIdentity(site.root, (text) => {
     const list = readNameList(text) ?? [];
     return list.includes(name) ? text : writeNameList(text, [...list, name]);
   }, manual)) {
-    console.log(C.success(`✓ Enabled in ${IDENTITY_PATH} (skins)`));
+    console.log(C.success(t('skin.enabledIn', { path: IDENTITY_PATH })));
   }
-  console.log(C.muted(`  Make it the default for new visitors: vg skin use ${name}`));
+  console.log(C.muted(`  ${t('skin.makeDefault', { name })}`));
 }
 
 // ── list ─────────────────────────────────────────────────────────────────
@@ -172,27 +174,27 @@ export function skinListCommand(): void {
   const defaultSkin = readDefaultSkin(identity) ?? 'classic';
 
   console.log('');
-  console.log(C.title(`Skins  (default: ${defaultSkin})`));
-  console.log(`  ${C.success('●')} ${C.text('classic'.padEnd(16))} ${C.muted('built in')}`);
+  console.log(C.title(t('skin.listTitle', { name: defaultSkin })));
+  console.log(`  ${C.success('●')} ${C.text('classic'.padEnd(16))} ${C.muted(t('skin.builtIn'))}`);
 
   for (const name of installed) {
     const packagePath = join(site.root, SKINS_DIR, name);
     const manifest = readManifest(packagePath);
     const record = readSourceRecord(packagePath);
     const notes: string[] = [];
-    if (manifest?.contract !== site.contract) notes.push(C.error(`targets contract ${JSON.stringify(manifest?.contract)}, site uses ${site.contract}`));
+    if (manifest?.contract !== site.contract) notes.push(C.error(t('skin.contractMismatch', { target: String(JSON.stringify(manifest?.contract)), site: site.contract })));
     const schemes = bundledSchemeIds(manifest);
-    if (schemes.length) notes.push(`schemes: ${schemes.join(', ')}`);
-    notes.push(record ? `from ${describeSource(record.source)}` : 'added by hand');
+    if (schemes.length) notes.push(t('skin.schemes', { list: schemes.join(', ') }));
+    notes.push(record ? t('skin.from', { source: describeSource(record.source) }) : t('skin.byHand'));
     const isOn = enabled.includes(name);
     const mark = isOn ? C.success('●') : C.muted('○');
-    const state = isOn ? 'enabled' : 'installed, not enabled';
+    const state = t(isOn ? 'skin.enabled' : 'skin.installedNotEnabled');
     console.log(`  ${mark} ${C.text(name.padEnd(16))} ${C.muted(state)}  ${C.muted('· ' + notes.join(' · '))}`);
   }
   for (const name of enabled.filter((n) => !installed.includes(n))) {
-    console.log(`  ${C.error('✗')} ${C.text(name.padEnd(16))} ${C.error(`enabled but not installed: put it in ${SKINS_DIR}/${name}/ or run vg skin add ${name}`)}`);
+    console.log(`  ${C.error('✗')} ${C.text(name.padEnd(16))} ${C.error(t('skin.enabledNotInstalled', { path: `${SKINS_DIR}/${name}`, name }))}`);
   }
-  if (!installed.length) console.log(C.muted(`  No skins installed in ${SKINS_DIR}/ yet. Try: vg skin add <name|owner/repo|./folder>`));
+  if (!installed.length) console.log(C.muted(`  ${t('skin.noneInstalled', { dir: SKINS_DIR })}`));
   console.log('');
 }
 
@@ -203,19 +205,19 @@ export async function skinUseCommand(name: string): Promise<void> {
   if (!site) return;
   if (name !== 'classic') {
     if (!NAME_RE.test(name) || !existsSync(packageDir(site.root, name))) {
-      fail(`Skin "${name}" is not installed`, `Install it first: vg skin add ${name}`);
+      fail(t('skin.notInstalled', { name }), t('skin.installFirst', { name }));
       return;
     }
     const enabled = readNameList(readIdentity(site.root)) ?? [];
     if (!enabled.includes(name)) {
       const ok = editIdentity(site.root, (text) => writeNameList(text, [...(readNameList(text) ?? []), name]),
-        `Add '${name}' to skins in ${IDENTITY_PATH}.`);
-      if (ok) console.log(C.success(`✓ Enabled ${name} in ${IDENTITY_PATH} (skins)`));
+        t('skin.manualAdd', { name, path: IDENTITY_PATH }));
+      if (ok) console.log(C.success(t('skin.enabledName', { name, path: IDENTITY_PATH })));
     }
   }
-  if (editIdentity(site.root, (text) => writeDefaultSkin(text, name), `Set skin: '${name}' in ${IDENTITY_PATH}.`)) {
-    console.log(C.success(`✓ Default skin is now ${C.accent(name)}`));
-    console.log(C.muted('  Visitors who already picked a skin keep their choice.'));
+  if (editIdentity(site.root, (text) => writeDefaultSkin(text, name), t('skin.manualDefault', { name, path: IDENTITY_PATH }))) {
+    console.log(C.success(t('skin.defaultNow', { name: C.accent(name) })));
+    console.log(C.muted(`  ${t('skin.keepChoice')}`));
   }
 }
 
@@ -226,20 +228,20 @@ export async function skinUpdateCommand(name?: string): Promise<void> {
   if (!site) return;
   const names = name ? [name] : installedNames(site.root);
   if (!names.length) {
-    console.log(C.muted(`No skins installed in ${SKINS_DIR}/.`));
+    console.log(C.muted(t('skin.noneToUpdate', { dir: SKINS_DIR })));
     return;
   }
   for (const n of names) {
     if (!NAME_RE.test(n) || !existsSync(packageDir(site.root, n))) {
-      fail(`skin "${n}" is not installed`);
+      fail(t('skin.notInstalled', { name: n }));
       continue;
     }
     const record = readSourceRecord(packageDir(site.root, n));
     if (!record) {
-      warn(`${SKINS_DIR}/${n}/ was added by hand, no source to update from. Skipped.`);
+      warn(t('skin.byHandSkip', { path: `${SKINS_DIR}/${n}` }));
       continue;
     }
-    await fetchAndInstall(site, n, record.source, 'Updated');
+    await fetchAndInstall(site, n, record.source, 'update');
   }
 }
 
@@ -249,11 +251,11 @@ export async function skinRemoveCommand(name: string, options: RemoveOptions): P
   const site = requireSite();
   if (!site) return;
   if (name === 'classic') {
-    fail('classic is built in and can\'t be removed');
+    fail(t('skin.classicRemove'));
     return;
   }
   if (!NAME_RE.test(name)) {
-    fail(`"${name}" is not a valid skin name`);
+    fail(t('skin.invalidName', { name }));
     return;
   }
   const target = packageDir(site.root, name);
@@ -261,36 +263,36 @@ export async function skinRemoveCommand(name: string, options: RemoveOptions): P
   const isEnabled = (readNameList(identity) ?? []).includes(name);
   const isInstalled = existsSync(target);
   if (!isInstalled && !isEnabled) {
-    fail(`skin "${name}" is not installed`);
+    fail(t('skin.notInstalled', { name }));
     return;
   }
 
   if (!options.yes) {
     if (!canPrompt) {
-      fail('Refusing to delete without confirmation', 'Add --yes to confirm in a non-interactive shell');
+      fail(t('skin.refuseNoConfirm'), t('skin.refuseHint'));
       return;
     }
-    const what = isInstalled ? `Delete ${SKINS_DIR}/${name}/ and disable it` : `Remove "${name}" from skins`;
+    const message = isInstalled ? t('skin.confirmDelete', { path: `${SKINS_DIR}/${name}` }) : t('skin.confirmRemove', { name });
     let confirmed = false;
     try {
-      ({ confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message: `${what}?`, default: false }]));
+      ({ confirmed } = await inquirer.prompt([{ type: 'confirm', name: 'confirmed', message, default: false }]));
     } catch (err) {
       // Ctrl+C or Ctrl+D closes the prompt: that's a "no", not a crash with a stack trace
       if ((err as Error)?.name !== 'ExitPromptError') throw err;
-      console.log(C.muted('\nCancelled.'));
+      console.log(C.muted(`\n${t('common.cancelled')}`));
     }
     if (!confirmed) return;
   }
 
   if (isEnabled) {
     editIdentity(site.root, (text) => writeNameList(text, (readNameList(text) ?? []).filter((n) => n !== name)),
-      `Remove '${name}' from skins in ${IDENTITY_PATH}.`);
+      t('skin.manualRemove', { name, path: IDENTITY_PATH }));
   }
   if (readDefaultSkin(readIdentity(site.root)) === name) {
-    if (editIdentity(site.root, (text) => writeDefaultSkin(text, 'classic'), `Set skin: 'classic' in ${IDENTITY_PATH}.`)) {
-      console.log(C.muted(`  ${name} was the default skin; the default is now classic.`));
+    if (editIdentity(site.root, (text) => writeDefaultSkin(text, 'classic'), t('skin.manualDefault', { name: 'classic', path: IDENTITY_PATH }))) {
+      console.log(C.muted(`  ${t('skin.wasDefault', { name })}`));
     }
   }
   if (isInstalled) rmSync(target, { recursive: true, force: true });
-  console.log(C.success(`✓ Removed skin ${name}`));
+  console.log(C.success(t('skin.removed', { name })));
 }

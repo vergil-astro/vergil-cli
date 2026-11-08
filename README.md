@@ -192,6 +192,21 @@ Skins live in [vergil-skins](https://github.com/vergil-astro/vergil-skins), offi
 
 **Packages are data and CSS only.** `add` copies `.json`, `.css`, `.md`, images, fonts and license files; scripts, configs and dotfiles are left out and listed. It refuses archives with links or paths that escape the folder, and checks the manifest against the appearance contract of the theme the site runs (`appearance/contract.json` in the theme) before installing, so a package that would break the build never lands. See the theme docs, *皮肤与配色接口*, for the package format.
 
+### Language
+
+vg speaks Chinese (`zh`) by default, and English (`en`) as the second language. The first time it runs in a terminal, it asks which one you want and saves the answer.
+
+```bash
+vg lang                                   # Show the display language and where it comes from
+vg lang en                                # Switch to English
+vg lang zh                                # Switch to Chinese
+VG_LANG=en vg list                        # One run in English, whatever is saved
+```
+
+The language is chosen in this order: the `VG_LANG` environment variable (`zh` or `en`), then the saved choice, then `zh`. The choice is saved in `$XDG_CONFIG_HOME/vergil/config.json`, or `~/.config/vergil/config.json` when `XDG_CONFIG_HOME` is not set; nothing is written into your site.
+
+The language covers vg's own messages, help and reports. What vg writes into your site keeps its own language: the templates of `vg new`, and the placeholder content and config of `vg reset`. Directive docs (`vg help <directive>`, `vg directives ref`) come from your theme and are shown as the theme wrote them.
+
 ### Help
 
 ```bash
@@ -242,7 +257,8 @@ vg works the same in a terminal and in a pipe, apart from things only a person n
 - `--json` on `list`, `series`, `docs` and `help` prints one JSON document to stdout and nothing else. Paths are relative to the site root.
 - Errors and warnings go to stderr, and a failed command exits with 1.
 - Outside a terminal there are no colors, file hyperlinks, banner or spinner animation.
-- Nothing waits for an answer outside a terminal: `vg publish` needs a slug, and `vg skin remove` needs `--yes`.
+- Nothing waits for an answer outside a terminal: `vg publish` needs a slug, and `vg skin remove` needs `--yes`. The first-run language question is skipped too.
+- Messages are in the user's language (Chinese by default). Set `VG_LANG=en` or `VG_LANG=zh` for a fixed language; `--json` output is the same in every language.
 
 ```bash
 vg list post -d --json                    # Draft posts

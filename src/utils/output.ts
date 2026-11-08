@@ -1,5 +1,6 @@
 import { relative, sep } from 'path';
 import { C } from './helpers.js';
+import { t } from './i18n.js';
 
 /**
  * Output rules, so agents and scripts can rely on vg:
@@ -39,4 +40,12 @@ export function sitePath(root: string, absPath: string): string {
   return relative(root, absPath).split(sep).join('/');
 }
 
-export const NOT_IN_SITE_HINT = 'Run it from your site folder, or create a site with `vg init`.';
+/** The hint under every "not in a site" error */
+export function notInSiteHint(): string {
+  return t('common.notInSiteHint');
+}
+
+/** The error for a command that needs a site but runs outside one */
+export function failNotInSite(): void {
+  fail(t('common.notInProject'), notInSiteHint());
+}

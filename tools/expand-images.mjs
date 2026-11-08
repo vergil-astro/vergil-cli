@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 /**
- * 展开图片引用：把内容里的 @img/xxx 改成指向 src/assets/img/xxx 的相对路径，
- * 方便在 Typora、VS Code 里预览和修改。图片文件不动。
+ * Expand image references: rewrite @img/xxx in content into relative paths pointing to src/assets/img/xxx,
+ * so they are easy to preview and edit in Typora or VS Code. Image files are left alone.
  *
- * 展开后的相对路径 Astro 同样能解析，pnpm dev、pnpm build 都正常；
- * 构建前会先运行 vg images organize，把它们改回 @img/。
+ * Astro resolves the expanded relative paths just as well, so pnpm dev and pnpm build both work;
+ * before a build, vg images organize runs first and turns them back into @img/.
  *
- * 处理范围：blog、projects、pages、docs、albums、series、thoughts 下的 .md/.mdx，
- * 正文里的 ![](...)、内容指令 image/photo 的 src 和 banner 的 bg/avatar、frontmatter 里的 src、cover、banner。
- * 代码块里的写法示例不动。
+ * Scope: .md/.mdx under blog, projects, pages, docs, albums, series, and thoughts;
+ * ![](...) in the body, src of the image/photo content directives and bg/avatar of banner, and src, cover, and banner in frontmatter.
+ * Syntax examples in code blocks are left alone.
  *
- * 不处理：图文动态（JSON，编辑器预览不了，它的图片只支持 @img/）。
+ * Not handled: image moments (JSON, which editors cannot preview, and whose images only support @img/).
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { t } from './i18n.mjs';
 
 const ROOT = process.cwd();
 const CONTENT_DIR = path.join(ROOT, 'src/content');
@@ -33,7 +34,7 @@ function walk(dir, out = []) {
     return out;
 }
 
-/** @img/xxx → 从这个文件出发指向 src/assets/img/xxx 的相对路径 */
+/** @img/xxx → a relative path from this file to src/assets/img/xxx */
 function toRelative(ref, file) {
     const target = path.join(IMG_DIR, ref.slice(IMG_ALIAS.length));
     let rel = path.relative(path.dirname(file), target).split(path.sep).join('/');
@@ -41,8 +42,8 @@ function toRelative(ref, file) {
     return rel;
 }
 
-// 内容指令里放图片的属性。sites、posters 的图片来自 links.ts 配置，不在内容里，不用处理；
-// story 的镜头图片是表格里的 ![](...)，走正文图片的规则
+// Content directive attributes that hold images. Images for sites and posters come from the links.ts config, not from content, so they need no handling;
+// story shot images are ![](...) inside a table and follow the body image rules
 const IMG_DIRECTIVES = {
     image: ['src'],
     photo: ['src'],
@@ -54,11 +55,11 @@ const IMG_DIRECTIVES = {
     quot: ['icon'],
     title: ['prefix', 'suffix']
 };
-// :name{...}、::name{...}、:::name{...}，以及带文字的 :name[文字]{...}
+// :name{...}, ::name{...}, :::name{...}, and :name[text]{...} with a label
 const DIRECTIVE = /(:{1,4})([a-z]+)(\[[^\]]*\])?\{([^}]*)\}/g;
 const DIRECTIVE_ATTR = /(?<![a-z0-9-])([a-z][a-z0-9-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'}]+))/g;
 
-/** 找出指令属性里的图片路径，回调返回新值则替换（统一写成双引号） */
+/** Find image paths in directive attributes; if the callback returns a new value, replace it (always written with double quotes) */
 function mapDirectiveImages(text, onRef) {
     return text.replace(DIRECTIVE, (all, colons, name, label, body) => {
         const keys = IMG_DIRECTIVES[name];
@@ -72,9 +73,9 @@ function mapDirectiveImages(text, onRef) {
     });
 }
 
-// 正文图片：路径可以用 <...> 包起来，里面允许空格
+// Body images: the path may be wrapped in <...>, which allows spaces inside
 const MD_IMAGE = /(!\[[^\]]*\]\(\s*)(?:<(@img\/[^>]+)>|(@img\/[^)\s]+))((?:\s+"[^"]*")?\s*\))/g;
-// frontmatter：值可以加引号（允许空格），后面可以跟 # 注释
+// frontmatter: the value may be quoted (allowing spaces) and may be followed by a # comment
 const FM_FIELD = /^(\s*-?\s*(?:src|cover|banner):\s*)(?:(['"])(@img\/.+?)\2|(@img\/[^\s#]*))(\s*(?:#.*)?)$/;
 
 function expand(text, file) {
@@ -98,7 +99,7 @@ function expand(text, file) {
             }
             continue;
         }
-        // 代码块里的是写法示例；:::private 里的内容会被加密成字符串，图片没法交给 Astro，都跳过
+        // Code blocks hold syntax examples, and content inside :::private is encrypted into a string so its images cannot be handed to Astro; skip both
         const f = line.match(/^\s*(`{3,}|~{3,})/) || line.match(/^\s*(:{3,})(?:private(?![a-z])|\s*$)/);
         if (fence) {
             if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
@@ -108,7 +109,7 @@ function expand(text, file) {
             fence = f[1];
             continue;
         }
-        // 行内代码 `...` 里的是写法示例，只处理代码之外的部分
+        // Inline code `...` holds syntax examples, so only the parts outside code are processed
         lines[i] = line
             .split(/(`[^`]*`)/)
             .map((part) =>
@@ -142,6 +143,10 @@ for (const file of CARRIERS.flatMap((c) => walk(path.join(CONTENT_DIR, c)))) {
     fs.writeFileSync(file, text, 'utf8');
     files++;
     refs += count;
-    console.log(`  展开  ${path.relative(ROOT, file)}（${count} 处）`);
+    console.log(`  ${t('images.expand.file', { path: path.relative(ROOT, file), count })}`);
 }
-console.log(files ? `\n展开了 ${files} 个文件、${refs} 处引用。改完运行 vg images organize 或构建，会改回 @img/。` : '没有需要展开的 @img/ 引用。');
+console.log(
+    files
+        ? `\n${t('images.expand.done', { files: t('images.expand.files', { count: files }), refs: t('images.expand.refs', { count: refs }) })}`
+        : t('images.expand.nothing')
+);

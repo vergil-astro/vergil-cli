@@ -12,11 +12,18 @@ const ROOT = resolve(__dirname, '..');
 const TSX = pathToFileURL(join(ROOT, 'node_modules/tsx/dist/loader.mjs')).href;
 const ENTRY = join(ROOT, 'src/index.ts');
 
-function vg(cwd: string, ...args: string[]) {
-  const env = { ...process.env };
+/** vg with extra environment variables; undefined removes one */
+function vgWith(extraEnv: Record<string, string | undefined>, cwd: string, ...args: string[]) {
+  const env = { ...process.env, ...extraEnv };
   delete env.FORCE_COLOR;
+  for (const [key, value] of Object.entries(extraEnv)) if (value === undefined) delete env[key];
   const r = spawnSync(process.execPath, ['--import', TSX, ENTRY, ...args], { cwd, env, encoding: 'utf8' });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+/** vg as the test runner sets it up: VG_LANG=en (see vitest.config.ts) */
+function vg(cwd: string, ...args: string[]) {
+  return vgWith({}, cwd, ...args);
 }
 
 const SCHEMA = `
@@ -27,6 +34,9 @@ export const DIRECTIVES = [
     example: ':::callout\\n内容\\n:::' },
 ];
 export const EXTRAS = [{ name: 'code', title: '代码块', example: '\`\`\`ts\\n\`\`\`', notes: [] }];
+export const DIRECTIVE_MAP = new Map(DIRECTIVES.map((d) => [d.name, d]));
+export const SYNTAX_RULES = ['指令要单独一行'];
+export const NAMED_COLORS = [];
 `;
 
 const temps: string[] = [];
@@ -156,6 +166,51 @@ describe('init', () => {
   });
 });
 
+describe('reset', () => {
+  it('writes config that imports the theme types from where the site has them', () => {
+    const pkgSite = site();
+    writeFileSync(join(pkgSite, 'package.json'), JSON.stringify({ dependencies: { '@vergil-astro/theme': '^1.0.0' } }));
+    expect(vg(pkgSite, 'reset').code).toBe(0);
+    for (const file of ['notice.ts', 'welcome.ts']) {
+      expect(readFileSync(join(pkgSite, 'src/data/config', file), 'utf8')).toMatch(/^import type \{ MemoItem \} from '@vergil-astro\/theme\/types';/);
+    }
+
+    // A template-style site carries the theme source, types included
+    const legacy = site();
+    expect(vg(legacy, 'reset').code).toBe(0);
+    expect(readFileSync(join(legacy, 'src/data/config/notice.ts'), 'utf8')).toMatch(/^import type \{ MemoItem \} from '\.\.\/\.\.\/types';/);
+  });
+
+  it('keeps the site language and skins, and rebuilds them as plain names', () => {
+    const dir = site();
+    mkdirSync(join(dir, 'src/data/config'), { recursive: true });
+    writeFileSync(join(dir, 'src/data/config/identity.ts'), [
+      'export const siteInfo = {',
+      "    title: 'Old',",
+      "    locale: 'en',",
+      "    skin: 'island',",
+      "    skins: ['island', 'brutalism', 'bad name'] as string[],",
+      '};',
+      '',
+    ].join('\n'));
+    expect(vg(dir, 'reset').code).toBe(0);
+    const identity = readFileSync(join(dir, 'src/data/config/identity.ts'), 'utf8');
+    expect(identity).toMatch(/^\s*locale: 'en',$/m);
+    expect(identity).toMatch(/^\s*skin: 'island',$/m);
+    expect(identity).toMatch(/^\s*skins: \['island', 'brutalism'\] as string\[\],$/m);
+    expect(identity).not.toMatch(/Old/);
+  });
+
+  it('falls back to the defaults when the site has no such settings', () => {
+    const dir = site();
+    expect(vg(dir, 'reset').code).toBe(0);
+    const identity = readFileSync(join(dir, 'src/data/config/identity.ts'), 'utf8');
+    expect(identity).toMatch(/^\s*locale: 'zh-CN',$/m);
+    expect(identity).toMatch(/^\s*skin: 'classic',$/m);
+    expect(identity).toMatch(/^\s*skins: \[\] as string\[\],$/m);
+  });
+});
+
 describe('outside a terminal', () => {
   it('does not prompt: publish without a slug fails and lists the drafts', () => {
     const dir = site();
@@ -177,5 +232,107 @@ describe('outside a terminal', () => {
     const dir = site();
     expect(vg(dir, 'list', 'post').stdout).not.toMatch(/\x1b/);
     expect(vg(dir).stdout).not.toMatch(/██/);
+  });
+});
+
+describe('language', () => {
+  /** An empty config dir, so nothing is saved yet */
+  function configHome(lang?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'vg-config-'));
+    temps.push(dir);
+    if (lang) {
+      mkdirSync(join(dir, 'vergil'));
+      writeFileSync(join(dir, 'vergil', 'config.json'), JSON.stringify({ lang }));
+    }
+    return dir;
+  }
+  function outside(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'vg-empty-'));
+    temps.push(dir);
+    return dir;
+  }
+
+  it('speaks zh by default, and does not ask or save anything outside a terminal', () => {
+    const home = configHome();
+    const r = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: home }, outside(), 'list');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/不在 Vergil 站点里/);
+    expect(r.stderr).not.toMatch(/Not in a Vergil project/);
+    expect(existsSync(join(home, 'vergil', 'config.json'))).toBe(false);
+  });
+
+  it('takes the saved language, and VG_LANG over it', () => {
+    const home = configHome('en');
+    expect(vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: home }, outside(), 'list').stderr).toMatch(/Not in a Vergil project/);
+    expect(vgWith({ VG_LANG: 'zh', XDG_CONFIG_HOME: home }, outside(), 'list').stderr).toMatch(/不在 Vergil 站点里/);
+    expect(vgWith({ VG_LANG: 'en', XDG_CONFIG_HOME: configHome('zh') }, outside(), 'list').stderr).toMatch(/Not in a Vergil project/);
+  });
+
+  it('vg lang en saves the language in the config dir, and vg lang shows where it comes from', () => {
+    const home = configHome();
+    const set = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: home }, outside(), 'lang', 'en');
+    expect(set.code).toBe(0);
+    expect(set.stdout).toMatch(/Display language set to English/);
+    const file = join(home, 'vergil', 'config.json');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ lang: 'en' });
+
+    const show = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: home }, outside(), 'lang');
+    expect(show.stdout).toMatch(/Display language: English \(en\)/);
+    expect(show.stdout).toContain(file);
+
+    const env = vgWith({ VG_LANG: 'zh', XDG_CONFIG_HOME: home }, outside(), 'lang');
+    expect(env.stdout).toMatch(/显示语言：中文（zh）/);
+    expect(env.stdout).toMatch(/VG_LANG/);
+  });
+
+  it('falls back to ~/.config without XDG_CONFIG_HOME', () => {
+    const home = configHome();
+    const r = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: undefined, HOME: home }, outside(), 'lang', 'zh');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/显示语言已设为中文/);
+    expect(JSON.parse(readFileSync(join(home, '.config', 'vergil', 'config.json'), 'utf8'))).toEqual({ lang: 'zh' });
+  });
+
+  it('rejects a language it does not know', () => {
+    const home = configHome();
+    const r = vgWith({ XDG_CONFIG_HOME: home }, outside(), 'lang', 'fr');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/Unknown language: fr/);
+    expect(existsSync(join(home, 'vergil', 'config.json'))).toBe(false);
+  });
+
+  it('passes the language to the tools it runs', () => {
+    const dir = site();
+    const zh = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: configHome() }, dir, 'images', 'check');
+    expect(zh.code).toBe(0);
+    expect(zh.stdout).toMatch(/没有失效的图片引用/);
+
+    // Saved, not in the environment: only vg resolves it, so the tool hears it through vg
+    const en = vgWith({ VG_LANG: undefined, XDG_CONFIG_HOME: configHome('en') }, dir, 'images', 'check');
+    expect(en.code).toBe(0);
+    expect(en.stdout).toMatch(/Scanned 0 images and 4 content files/);
+    expect(en.stdout).toMatch(/No broken image references/);
+    expect(en.stdout).not.toMatch(/[\u4e00-\u9fff]/);
+
+    expect(vg(dir, 'directives', 'ref', 'callout').stdout).toMatch(/^### callout: 提示框\n\nSyntax: starts with `:::callout/);
+    expect(vgWith({ VG_LANG: 'zh' }, dir, 'directives', 'ref', 'callout').stdout).toMatch(/^### callout：提示框\n\n写法：`:::callout/);
+  });
+
+  it('translates commander\'s own errors and help', () => {
+    const zh = vgWith({ VG_LANG: 'zh' }, outside(), 'lsit');
+    expect(zh.code).toBe(1);
+    expect(zh.stderr).toBe("错误：未知命令 'lsit'\n（是不是 list？）\n");
+    expect(vg(outside(), 'lsit').stderr).toBe("error: unknown command 'lsit'\n(Did you mean list?)\n");
+    const help = vgWith({ VG_LANG: 'zh' }, outside(), 'serve', '--help').stdout;
+    expect(help).toMatch(/^用法：/);
+    expect(help).toMatch(/\(默认: "4321"\)/);
+    expect(help).toMatch(/显示命令帮助/);
+  });
+
+  it('keeps --json the same in every language', () => {
+    const dir = site();
+    for (const args of [['list', '--json'], ['docs', '--json'], ['help', 'callout', '--json']]) {
+      expect(vgWith({ VG_LANG: 'zh' }, dir, ...args).stdout, args.join(' ')).toBe(vg(dir, ...args).stdout);
+    }
   });
 });

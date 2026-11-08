@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { t, withLabel, type MessageKey } from './i18n.js';
 
 export const C = {
   title: chalk.hex('#C8A464'),
@@ -37,72 +38,97 @@ export function printBanner(): void {
     ╚████╔╝ ███████╗██║  ██║╚██████╔╝██║███████╗
      ╚═══╝  ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝
     `));
-  console.log(C.subtitle('    Vergil CLI · Write. Publish. Create.\n'));
+  console.log(C.subtitle(`    Vergil CLI · ${t('help.tagline')}\n`));
+}
+
+/** One line of the help screen: the command (highlighted), its argument, what it does, and optionally its options below */
+type HelpLine = [command: string, arg: string, description: MessageKey, options?: string];
+
+/** Width of the command column, as before the help screen was translated */
+const HELP_COLUMN = 27;
+
+/** Columns a string takes in a terminal: CJK characters are two wide */
+export function textWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) width += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
+  return width;
 }
 
 export function printHelp(): void {
-  console.log(C.accent('Usage:') + ' vg <command> [options]\n');
+  const title = t('help.argTitle');
+  const text = t('help.argText');
+  const sections: Array<[MessageKey, HelpLine[]]> = [
+    ['help.section.init', [
+      ['vg init my-site', '', 'help.init.newFolder'],
+      ['vg init', '', 'help.init.here'],
+      ['vg init --template <name>', '', 'help.init.template'],
+    ]],
+    ['help.section.create', [
+      ['vg new post', title, 'help.new.post', '--draft, --tags <list>, --series <name>, --cover <path>'],
+      ['vg new page', title, 'help.new.page'],
+      ['vg new project', title, 'help.new.project', '--description <text>, --website <url>, --repo <owner/repo>'],
+      ['vg new album', title, 'help.new.album', '--tags <list>, --theme <golden|seasons>, --cover <path>'],
+      ['vg new thought', text, 'help.new.thought', '--tags <list>'],
+      ['vg new moment', text, 'help.new.moment', '--tags <list>'],
+      ['vg new doc', title, 'help.new.doc', '--draft, --tags <list>, --path <book>[/<chapter>]'],
+    ]],
+    ['help.section.dev', [
+      ['vg serve', '', 'help.serve'],
+      ['vg build', '', 'help.build'],
+      ['vg deploy', '', 'help.deploy'],
+      ['vg clean', '', 'help.clean'],
+    ]],
+    ['help.section.content', [
+      ['vg publish', '[slug]', 'help.publish'],
+      ['vg list', '', 'help.list'],
+      ['vg list', '<type>', 'help.listType'],
+      ['vg series', '', 'help.series'],
+      ['vg series', '<name>', 'help.seriesShow'],
+      ['vg docs', '', 'help.docs'],
+      ['vg docs', '-d', 'help.docsDrafts'],
+      ['vg docs', '<book>', 'help.docsShow'],
+    ]],
+    ['help.section.images', [
+      ['vg images organize', '', 'help.images.organize'],
+      ['vg images check', '', 'help.images.check'],
+      ['vg images expand', '', 'help.images.expand'],
+    ]],
+    ['help.section.directives', [
+      ['vg help [topic]', '', 'help.directiveHelp'],
+      ['vg directives check', '[files]', 'help.directives.check'],
+      ['vg directives ref', '[names]', 'help.directives.ref'],
+    ]],
+    ['help.section.start', [
+      ['vg reset', '', 'help.reset'],
+      ['vg upgrade', '', 'help.upgrade'],
+    ]],
+    ['help.section.skins', [
+      ['vg skin add', '<source>', 'help.skin.add'],
+      ['vg skin list', '', 'help.skin.list'],
+      ['vg skin use', '<name>', 'help.skin.use'],
+      ['vg skin update', '[name]', 'help.skin.update'],
+      ['vg skin remove', '<name>', 'help.skin.remove'],
+    ]],
+    ['help.section.lang', [
+      ['vg lang', '[zh|en]', 'help.lang'],
+    ]],
+  ];
 
-  console.log(C.subtitle('Initialize:'));
-  console.log('  ' + C.accent('vg init my-site') + '            Create a site in a new folder my-site');
-  console.log('  ' + C.accent('vg init') + '                    Initialize Vergil in current directory');
-  console.log('  ' + C.accent('vg init --template <name>') + '   Clone from a specific GitHub repo (default: vergil-astro/vergil-astro-theme)\n');
+  console.log(`${withLabel(t('cli.title.usage'), 'vg <command> [options]', C.accent)}\n`);
+  for (const [heading, lines] of sections) {
+    console.log(C.subtitle(t(heading)));
+    for (const [command, arg, description, options] of lines) {
+      const usage = arg ? `${C.accent(command)} ${arg}` : C.accent(command);
+      const width = textWidth(command) + (arg ? textWidth(arg) + 1 : 0);
+      console.log(`  ${usage}${' '.repeat(Math.max(1, HELP_COLUMN - width))}${t(description)}`);
+      if (options) console.log(`    ${C.muted(options)}`);
+    }
+    console.log();
+  }
 
-  console.log(C.subtitle('Create Content:'));
-  console.log('  ' + C.accent('vg new post') + ' "Title"        Create a blog post');
-  console.log('    ' + C.muted('--draft, --tags <list>, --series <name>, --cover <path>'));
-  console.log('  ' + C.accent('vg new page') + ' "Title"        Create a standalone page');
-  console.log('  ' + C.accent('vg new project') + ' "Title"     Create a project showcase');
-  console.log('    ' + C.muted('--description <text>, --website <url>, --repo <owner/repo>'));
-  console.log('  ' + C.accent('vg new album') + ' "Title"      Create a photo album');
-  console.log('    ' + C.muted('--tags <list>, --theme <golden|seasons>, --cover <path>'));
-  console.log('  ' + C.accent('vg new thought') + ' "Text"      Create a thought (card stream)');
-  console.log('    ' + C.muted('--tags <list>'));
-  console.log('  ' + C.accent('vg new moment') + ' "Text"       Create a moment (timeline)');
-  console.log('    ' + C.muted('--tags <list>'));
-  console.log('  ' + C.accent('vg new doc') + ' "Title"         Create a doc, or a new book without --path');
-  console.log('    ' + C.muted('--draft, --tags <list>, --path <book>[/<chapter>]\n'));
+  console.log(C.subtitle(t('help.section.agents')));
+  console.log(`  ${C.accent('--json')}${' '.repeat(HELP_COLUMN - '--json'.length)}${t('help.json')}`);
+  console.log(`  ${C.muted(t('help.agentsNote'))}\n`);
 
-  console.log(C.subtitle('Development:'));
-  console.log('  ' + C.accent('vg serve') + '                   Start dev server');
-  console.log('  ' + C.accent('vg build') + '                   Build for production');
-  console.log('  ' + C.accent('vg deploy') + '                  Build and deploy');
-  console.log('  ' + C.accent('vg clean') + '                   Clean cache and build output\n');
-
-  console.log(C.subtitle('Content Management:'));
-  console.log('  ' + C.accent('vg publish') + ' [slug]          Publish a draft (pick from list if no slug)');
-  console.log('  ' + C.accent('vg list') + '                    Content summary (excl. docs)');
-  console.log('  ' + C.accent('vg list') + ' <type>             List items of a type: post|page|project|album|thought|moment');
-  console.log('  ' + C.accent('vg series') + '                  List all series and post counts');
-  console.log('  ' + C.accent('vg series') + ' <name>           Show all posts in a series');
-  console.log('  ' + C.accent('vg docs') + '                    List all documentation books');
-  console.log('  ' + C.accent('vg docs') + ' -d                  List all docs drafts');
-  console.log('  ' + C.accent('vg docs') + ' <book>             Show a book as a chapter tree\n');
-
-  console.log(C.subtitle('Images:'));
-  console.log('  ' + C.accent('vg images organize') + '         Move post images under src/assets/img/ and use @img/ (runs before build)');
-  console.log('  ' + C.accent('vg images check') + '            Report image references that point to missing files');
-  console.log('  ' + C.accent('vg images expand') + '           Rewrite @img/ references as relative paths\n');
-
-  console.log(C.subtitle('Directives:'));
-  console.log('  ' + C.accent('vg help [topic]') + '            Directive help from this site\'s theme (e.g. callout, tabs)');
-  console.log('  ' + C.accent('vg directives check') + ' [files] Check directive syntax in src/content or the given files');
-  console.log('  ' + C.accent('vg directives ref') + ' [names]   Print the directive reference as Markdown\n');
-
-  console.log(C.subtitle('Starting out and upgrading:'));
-  console.log('  ' + C.accent('vg reset') + '                   Clear the sample content (--all also removes the Vergil guide, --dry previews)');
-  console.log('  ' + C.accent('vg upgrade') + '                 Upgrade the theme, run its migrations, compare the site before and after (--dry-run previews)\n');
-
-  console.log(C.subtitle('Skins:'));
-  console.log('  ' + C.accent('vg skin add') + ' <source>       Install a skin: name, owner/repo[/folder][#ref] or ./folder');
-  console.log('  ' + C.accent('vg skin list') + '               List built-in, installed and enabled skins');
-  console.log('  ' + C.accent('vg skin use') + ' <name>         Make a skin the default for new visitors');
-  console.log('  ' + C.accent('vg skin update') + ' [name]      Re-fetch installed skins');
-  console.log('  ' + C.accent('vg skin remove') + ' <name>      Disable a skin and delete its folder\n');
-
-  console.log(C.subtitle('For agents and scripts:'));
-  console.log('  ' + C.accent('--json') + '                     Machine-readable output for list, series, docs and help');
-  console.log('  ' + C.muted('Errors go to stderr with a non-zero exit code; nothing prompts outside a terminal.\n'));
-
-  console.log(C.muted('Run `vg <command> --help` for more details'));
+  console.log(C.muted(t('help.more')));
 }

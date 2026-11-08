@@ -4,7 +4,8 @@ import { join } from 'path';
 import readline from 'readline';
 import { C } from '../utils/helpers.js';
 import { getProjectRoot } from '../utils/file.js';
-import { canPrompt, fail, warn, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { canPrompt, fail, failNotInSite, warn, sitePath } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 
 interface DraftEntry {
   title: string;
@@ -67,34 +68,34 @@ async function interactivePublish(root: string): Promise<void> {
   const drafts = listAllDrafts(root);
 
   if (drafts.length === 0) {
-    console.log(C.success('✓ No drafts to publish'));
+    console.log(C.success(t('publish.noDrafts')));
     return;
   }
 
   // Picking from a list needs a person at the terminal; agents and scripts pass the slug
   if (!canPrompt) {
     return fail(
-      'No draft given',
-      'Pass the one to publish: vg publish <slug>',
+      t('publish.noDraftGiven'),
+      t('publish.passSlug'),
       ...drafts.map(d => `${(d.relpath.split('/').pop() || '').replace(/\.mdx?$/, '')}  (${d.relpath})`),
     );
   }
 
-  console.log(C.accent('\nDrafts\n'));
+  console.log(C.accent(`\n${t('publish.draftsTitle')}\n`));
   console.log(C.dim('─'.repeat(60)));
 
   drafts.forEach((d, i) => {
-    const draftLabel = C.warning(' [draft]');
+    const draftLabel = C.warning(` ${t('common.draftTag')}`);
     console.log(`  ${C.accent(`${i + 1}.`)} ${C.text(d.title)}${draftLabel}`);
     console.log(`     ${C.muted(d.relpath)}`);
   });
 
   console.log();
-  const answer = await askQuestion(C.accent('Pick a number to publish (or press Enter to cancel): '));
+  const answer = await askQuestion(C.accent(t('publish.pick')));
   const num = parseInt(answer.trim(), 10);
 
   if (isNaN(num) || num < 1 || num > drafts.length) {
-    console.log(C.muted('Cancelled.'));
+    console.log(C.muted(t('common.cancelled')));
     return;
   }
 
@@ -112,7 +113,7 @@ async function publishFile(filePath: string, root: string): Promise<void> {
 
   if (!data.draft) {
     // Already in the state asked for, so not a failure
-    warn('This content is already published');
+    warn(t('publish.alreadyPublished'));
     return;
   }
 
@@ -121,17 +122,17 @@ async function publishFile(filePath: string, root: string): Promise<void> {
   const updated = frontmatter.replace(/^draft:\s*(true|yes|on)\s*$/m, 'draft: false');
 
   if (updated === frontmatter) {
-    return fail('Could not find the draft flag in frontmatter', sitePath(root, filePath));
+    return fail(t('publish.noDraftFlag'), sitePath(root, filePath));
   }
 
   writeFileSync(filePath, updated + content.slice(fmEnd));
 
-  console.log(C.success(`✓ Published: ${C.accent(sitePath(root, filePath))}`));
+  console.log(C.success(t('publish.published', { path: C.accent(sitePath(root, filePath)) })));
 }
 
 export async function publishCommand(slug?: string): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   if (!slug) {
     await interactivePublish(root);
@@ -155,5 +156,5 @@ export async function publishCommand(slug?: string): Promise<void> {
     }
   }
 
-  fail(`No draft found matching: ${slug}`, 'See all drafts with `vg list -d` and `vg docs -d` (add --json for machine-readable output)');
+  fail(t('publish.notFound', { slug }), t('publish.notFoundHint'));
 }

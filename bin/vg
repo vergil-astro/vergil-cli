@@ -28,7 +28,15 @@ if (local) {
   process.exit(result.status ?? 1);
 }
 
-import('../dist/index.js').catch((err) => {
-  console.error('Failed to start Vergil CLI:', err.message);
+import('../dist/index.js').catch(async (err) => {
+  // In the user's language when the tools' dictionary loads; it needs nothing from dist/
+  let message = 'Failed to start Vergil CLI:';
+  try {
+    message = (await import('../tools/i18n.mjs')).t('cli.startFailed');
+  } catch {
+    // Keep the English message
+  }
+  // A full-width colon (Chinese) brings its own space
+  console.error(`${message}${message.endsWith('：') ? '' : ' '}${err.message}`);
   process.exit(1);
 });

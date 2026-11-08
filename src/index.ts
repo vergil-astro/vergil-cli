@@ -19,90 +19,106 @@ import { directiveHelpCommand } from './commands/directive-help.js';
 import { skinAddCommand, skinListCommand, skinRemoveCommand, skinUpdateCommand, skinUseCommand } from './commands/skin.js';
 import { runTool } from './commands/tools.js';
 import { upgradeCommand } from './commands/upgrade.js';
+import { askLanguage, langCommand, shouldAskLanguage } from './commands/lang.js';
 import type { JsonOptions, ListOptions } from './types.js';
+import { helpConfiguration, translateCommanderError } from './utils/commander-i18n.js';
+import { t } from './utils/i18n.js';
 import { stdoutIsTTY } from './utils/output.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
+const args = process.argv.slice(2);
+
+// The first run in a terminal asks for the language; everything below is built in that language
+if (shouldAskLanguage(args)) await askLanguage();
 
 program
   .name('vg')
-  .description('CLI for Vergil Astro theme — write, publish, and create')
-  .version(pkg.version, '-v, --version', 'Show version')
+  .description(t('cli.description'))
+  .version(pkg.version, '-v, --version', t('cli.version'))
   .usage('[command] [options]')
+  // Before any subcommand is added, so they all inherit it
+  .helpOption('-h, --help', t('cli.helpOption'))
+  .configureHelp(helpConfiguration)
   .configureOutput({
-    outputError: (str, write) => write(C.error(str)),
+    outputError: (str, write) => write(C.error(translateCommanderError(str))),
   });
+
+/** A command group: `vg <group> help` describes itself in the user's language too */
+function group(cmd: Command): Command {
+  return cmd.helpCommand('help [command]', t('cli.helpCommand'));
+}
 
 // -- Initialize --
 program
   .command('init [dir]')
-  .description('Create a Vergil site from the theme\'s starter, in a new folder <dir> or the current directory')
-  .option('-t, --template <name>', 'GitHub repo of the theme (default: vergil-astro/vergil-astro-theme)', 'vergil-astro/vergil-astro-theme')
-  .option('-r, --ref <ref>', 'Tag, branch or commit of the theme repo (default: the latest release)')
-  .option('--from <dir>', 'Use a local checkout of the theme repo instead of downloading it')
-  .option('--theme <spec>', 'Version spec of @vergil-astro/theme to depend on (default: ^ the version of that release)')
-  .option('--skip-install', 'Skip dependency installation')
-  .option('--skip-serve', 'Skip starting dev server after init')
+  .description(t('cli.init'))
+  .option('-t, --template <name>', t('cli.init.template'), 'vergil-astro/vergil-astro-theme')
+  .option('-r, --ref <ref>', t('cli.init.ref'))
+  .option('--from <dir>', t('cli.init.from'))
+  .option('--theme <spec>', t('cli.init.theme'))
+  .option('--skip-install', t('cli.init.skipInstall'))
+  .option('--skip-serve', t('cli.init.skipServe'))
   .action(initCommand);
 
 // -- Create Content --
 program
   .command('new <type> <title>')
-  .description('Create new content. Types: post, page, project, album, thought, moment, doc')
-  .option('-d, --draft', 'Save as draft')
-  .option('-t, --tags <list>', 'Comma-separated tags')
-  .option('-c, --cover <path>', 'Cover image path')
-  .option('-s, --series <name>', 'Series name (for posts)')
-  .option('-w, --website <url>', 'Project website URL')
-  .option('-r, --repo <repo>', 'GitHub repo, owner/repo or URL (for projects)')
-  .option('--description <text>', 'Description (for projects)')
-  .option('--theme <name>', 'Album theme: golden|seasons', 'golden')
-  .option('-p, --path <path>', 'Folder for docs: <book> or <book>/<chapter>')
+  .description(t('cli.new'))
+  .option('-d, --draft', t('cli.new.draft'))
+  .option('-t, --tags <list>', t('cli.new.tags'))
+  .option('-c, --cover <path>', t('cli.new.cover'))
+  .option('-s, --series <name>', t('cli.new.series'))
+  .option('-w, --website <url>', t('cli.new.website'))
+  .option('-r, --repo <repo>', t('cli.new.repo'))
+  .option('--description <text>', t('cli.new.description'))
+  .option('--theme <name>', t('cli.new.theme'), 'golden')
+  .option('-p, --path <path>', t('cli.new.path'))
   .addHelpText('after', `
-Options by type:
+${t('cli.new.byType')}
   post      --draft, --tags, --series, --cover
-  page      (none)
+  page      ${t('cli.new.none')}
   project   --description, --website, --repo
   album     --tags, --theme, --cover
   thought   --tags
   moment    --tags
-  doc       --draft, --tags, --path (omit --path to start a new book)
+  doc       --draft, --tags, --path ${t('cli.new.docPathNote')}
 `)
   .action(newCommand);
 
 // -- Development --
 program
   .command('serve')
-  .description('Start Astro dev server')
-  .option('-p, --port <port>', 'Port number', '4321')
-  .option('-h, --host', 'Expose to network')
+  .description(t('cli.serve'))
+  .option('-p, --port <port>', t('cli.serve.port'), '4321')
+  .option('-h, --host', t('cli.serve.host'))
   .action(serveCommand);
 
 program
   .command('build')
-  .description('Build the site for production')
+  .description(t('cli.build'))
   .action(buildCommand);
 
 program
   .command('deploy')
-  .description('Build and deploy to hosting')
-  .option('-t, --target <target>', 'Target: github|vercel|netlify', 'github')
+  .description(t('cli.deploy'))
+  .option('-t, --target <target>', t('cli.deploy.target'), 'github')
   .action(deployCommand);
 
 program
   .command('clean')
-  .description('Clean cache and build output')
+  .description(t('cli.clean'))
   .action(cleanCommand);
 
 // -- Content Management --
 program
   .command('publish [slug]')
-  .description('Publish a draft (remove draft flag). Without a slug, pick from a list (terminal only).')
+  .description(t('cli.publish'))
   .action(publishCommand);
 
 const JSON_FLAG = '--json';
-const JSON_DESC = 'Print one JSON document to stdout instead of text';
+const JSON_DESC = t('cli.json');
+const DRAFTS_DESC = t('cli.drafts');
 
 /** Options of a subcommand merged with its parent's: `vg docs list -d` puts -d on either one */
 function mergedOpts(cmd: Command): ListOptions {
@@ -111,14 +127,14 @@ function mergedOpts(cmd: Command): ListOptions {
 
 program
   .command('list [type]')
-  .description('List content — `vg list` for summary, `vg list <type>` for items')
-  .option('-d, --drafts', 'Show only drafts')
+  .description(t('cli.list'))
+  .option('-d, --drafts', DRAFTS_DESC)
   .option(JSON_FLAG, JSON_DESC)
   .action((type: string | undefined, options: ListOptions) => listCommand(type, options));
 
 const seriesCmd = program
   .command('series [name]')
-  .description('Manage post series — `vg series` lists, `vg series <name>` shows one')
+  .description(t('cli.series'))
   .option(JSON_FLAG, JSON_DESC)
   .action((name: string | undefined, options: ListOptions) => {
     if (!name) return seriesListCommand(options);
@@ -127,7 +143,7 @@ const seriesCmd = program
 
 seriesCmd
   .command('list')
-  .description('List all series and post counts')
+  .description(t('cli.series.list'))
   .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command) {
     return seriesListCommand(mergedOpts(this));
@@ -135,7 +151,7 @@ seriesCmd
 
 seriesCmd
   .command('show <name>')
-  .description('Show all posts in a series')
+  .description(t('cli.series.show'))
   .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command, name: string) {
     return seriesShowCommand(name, mergedOpts(this));
@@ -143,8 +159,8 @@ seriesCmd
 
 const docsCmd = program
   .command('docs [book]')
-  .description('Browse documentation books — `vg docs` lists, `vg docs <book>` shows one')
-  .option('-d, --drafts', 'Show only drafts')
+  .description(t('cli.docs'))
+  .option('-d, --drafts', DRAFTS_DESC)
   .option(JSON_FLAG, JSON_DESC)
   .action((book?: string, options?: ListOptions) => {
     if (!book) return docsListCommand(options?.drafts, options?.json);
@@ -153,8 +169,8 @@ const docsCmd = program
 
 docsCmd
   .command('list')
-  .description('List all books with chapter counts')
-  .option('-d, --drafts', 'Show only drafts')
+  .description(t('cli.docs.list'))
+  .option('-d, --drafts', DRAFTS_DESC)
   .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command) {
     const opts = mergedOpts(this);
@@ -163,8 +179,8 @@ docsCmd
 
 docsCmd
   .command('show <book>')
-  .description('Show a book as a chapter tree')
-  .option('-d, --drafts', 'Show only drafts')
+  .description(t('cli.docs.show'))
+  .option('-d, --drafts', DRAFTS_DESC)
   .option(JSON_FLAG, JSON_DESC)
   .action(function (this: Command, book: string) {
     const opts = mergedOpts(this);
@@ -172,98 +188,103 @@ docsCmd
   });
 
 // -- Skins --
-const skinCmd = program
+const skinCmd = group(program
   .command('skin')
-  .description('Install and manage skins (skins/<name>/, enabled in identity.ts). Each skin brings its own color schemes');
+  .description(t('cli.skin')));
 
 skinCmd
   .command('add <source>')
-  .description('Install a skin: a name from vergil-astro/vergil-skins, a GitHub repo or folder in one (owner/repo[/folder][#ref]), or a local folder')
-  .option('-n, --name <name>', 'Install under this name')
-  .option('-f, --force', 'Replace an existing install')
-  .option('--no-enable', "Don't add it to skins in identity.ts")
+  .description(t('cli.skin.add'))
+  .option('-n, --name <name>', t('cli.skin.add.name'))
+  .option('-f, --force', t('cli.skin.add.force'))
+  .option('--no-enable', t('cli.skin.add.noEnable'))
   .action(skinAddCommand);
 
 skinCmd
   .command('list')
-  .description('List built-in, installed and enabled skins')
+  .description(t('cli.skin.list'))
   .action(skinListCommand);
 
 skinCmd
   .command('use <name>')
-  .description('Make a skin the default for visitors who haven\'t picked one')
+  .description(t('cli.skin.use'))
   .action(skinUseCommand);
 
 skinCmd
   .command('update [name]')
-  .description('Re-fetch installed skins from where they were installed from')
+  .description(t('cli.skin.update'))
   .action(skinUpdateCommand);
 
 skinCmd
   .command('remove <name>')
-  .description('Disable a skin and delete its folder')
-  .option('-y, --yes', 'Skip the confirmation prompt')
+  .description(t('cli.skin.remove'))
+  .option('-y, --yes', t('cli.skin.remove.yes'))
   .action(skinRemoveCommand);
 
 // -- Content tools --
-const imagesCmd = program
+const imagesCmd = group(program
   .command('images')
-  .description('Tidy and check the images your posts use (src/assets/img/, referenced as @img/)');
+  .description(t('cli.images')));
 
 imagesCmd
   .command('organize')
-  .description('Move each post\'s images under src/assets/img/ and rewrite the references as @img/')
+  .description(t('cli.images.organize'))
   .action(() => runTool('organize-images'));
 
 imagesCmd
   .command('check')
-  .description('Report image references that point to missing files')
+  .description(t('cli.images.check'))
   .action(() => runTool('check-images'));
 
 imagesCmd
   .command('expand')
-  .description('Rewrite @img/ references as plain relative paths, e.g. for editors that cannot resolve @img/')
+  .description(t('cli.images.expand'))
   .action(() => runTool('expand-images'));
 
-const directivesCmd = program
+const directivesCmd = group(program
   .command('directives')
-  .description('Check and look up content directives, using the rules of the theme this site runs');
+  .description(t('cli.directives')));
 
 directivesCmd
   .command('check [files...]')
-  .description('Check directive syntax in src/content, or only in the given files')
+  .description(t('cli.directives.check'))
   .action((files: string[] = []) => runTool('check-directives', files));
 
 directivesCmd
   .command('ref [names...]')
-  .description('Print the directive reference as Markdown, or only the named directives')
+  .description(t('cli.directives.ref'))
   .action((names: string[] = []) => runTool('directive-ref', names));
 
 program
   .command('reset')
-  .description('Clear the sample content for a clean start; keeps the Vergil guide unless --all')
-  .option('--all', 'Also remove the Vergil guide docs')
-  .option('--dry', 'Only print what would change')
+  .description(t('cli.reset'))
+  .option('--all', t('cli.reset.all'))
+  .option('--dry', t('cli.reset.dry'))
   .action((options: { all?: boolean; dry?: boolean }) => runTool('reset-content', [...(options.all ? ['--all'] : []), ...(options.dry ? ['--dry'] : [])]));
 
 // -- Upgrade --
 program
   .command('upgrade')
-  .description('Upgrade the theme package on a new branch, run the migrations it needs, and compare the site before and after')
-  .option('--to <version>', 'Upgrade to this version instead of the latest')
-  .option('--dry-run', 'Only print what would happen')
-  .option('--skip-check', 'Skip building and comparing the site before and after')
+  .description(t('cli.upgrade'))
+  .option('--to <version>', t('cli.upgrade.to'))
+  .option('--dry-run', t('cli.upgrade.dryRun'))
+  .option('--skip-check', t('cli.upgrade.skipCheck'))
   .action(upgradeCommand);
 
 // -- Help --
 program
   .command('help [topic]')
-  .description('Directive help from this site\'s theme: `vg help directives`, `vg help callout`')
+  .description(t('cli.help'))
   .option(JSON_FLAG, JSON_DESC)
   .action((topic: string | undefined, options: JsonOptions) => directiveHelpCommand(topic, options));
 
+// -- Language --
+program
+  .command('lang [language]')
+  .description(t('cli.lang'))
+  .action((language: string | undefined) => langCommand(language));
+
 // -- Parse --
-const args = process.argv.slice(2);
 if (args.length === 0) {
   if (stdoutIsTTY) printBanner();
   printHelp();

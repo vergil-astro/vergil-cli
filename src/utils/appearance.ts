@@ -19,6 +19,7 @@ import {
 import { homedir, tmpdir } from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { promisify } from 'util';
+import { t } from './i18n.js';
 import { resolveThemeFile } from './theme.js';
 
 const execFileAsync = promisify(execFile);
@@ -77,7 +78,7 @@ export type Source =
  */
 export function parseSource(input: string, cwd: string = process.cwd()): Source {
   const value = input.trim();
-  if (!value) throw new Error('Missing skin source');
+  if (!value) throw new Error(t('appearance.missingSource'));
 
   if (value.startsWith('.') || value.startsWith('/') || value.startsWith('~') || /^[A-Za-z]:[\\/]/.test(value)) {
     const path = value.startsWith('~') ? join(homedir(), value.slice(1)) : resolve(cwd, value);
@@ -88,13 +89,13 @@ export function parseSource(input: string, cwd: string = process.cwd()): Source 
   const spec = hash === -1 ? value : value.slice(0, hash);
   const ref = hash === -1 ? undefined : value.slice(hash + 1);
   if (ref !== undefined && (!REF_RE.test(ref) || ref.split('/').includes('..'))) {
-    throw new Error(`"${ref}" is not a valid git ref`);
+    throw new Error(t('appearance.badRef', { ref }));
   }
 
   const parts = spec.split('/');
   if (parts.length === 1) {
     if (!NAME_RE.test(spec)) {
-      throw new Error(`"${spec}" is not a valid skin name: use lowercase letters, digits and dashes, starting with a letter`);
+      throw new Error(t('appearance.badName', { name: spec }));
     }
     return { type: 'github', owner: OFFICIAL_OWNER, repo: OFFICIAL_REPO, path: `${OFFICIAL_PATH}/${spec}`, ref };
   }
@@ -102,9 +103,7 @@ export function parseSource(input: string, cwd: string = process.cwd()): Source 
     const [owner, repo, ...rest] = parts;
     return rest.length ? { type: 'github', owner, repo, path: rest.join('/'), ref } : { type: 'github', owner, repo, ref };
   }
-  throw new Error(
-    `Can't read "${input}" as a skin source. Use a name (island), a GitHub repo (owner/repo, owner/repo/folder, either with #tag), or a local folder (./my-skin)`,
-  );
+  throw new Error(t('appearance.badSource', { input }));
 }
 
 export function describeSource(source: Source): string {
@@ -138,7 +137,7 @@ export async function stageSource(source: Source): Promise<Staged> {
   try {
     if (source.type === 'local') {
       if (!existsSync(source.path) || !statSync(source.path).isDirectory()) {
-        throw new Error(`${source.path} is not a folder`);
+        throw new Error(t('appearance.notFolder', { path: source.path }));
       }
       return { dir: realpathSync(source.path), cleanup };
     }
@@ -147,11 +146,11 @@ export async function stageSource(source: Source): Promise<Staged> {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(res.status === 404
-        ? `GitHub repo ${source.owner}/${source.repo}${source.ref ? `#${source.ref}` : ''} not found, or that ref doesn't exist`
-        : `Download failed: HTTP ${res.status} ${url}`);
+        ? t('appearance.repoNotFound', { repo: `${source.owner}/${source.repo}${source.ref ? `#${source.ref}` : ''}` })
+        : t('appearance.downloadFailed', { status: res.status, url }));
     }
     const data = Buffer.from(await res.arrayBuffer());
-    if (data.length > MAX_ARCHIVE_BYTES) throw new Error('Archive is larger than 20 MB, refusing to install');
+    if (data.length > MAX_ARCHIVE_BYTES) throw new Error(t('appearance.tooLarge'));
     const archive = join(tmp, 'package.tar.gz');
     writeFileSync(archive, data);
 
@@ -159,10 +158,10 @@ export async function stageSource(source: Source): Promise<Staged> {
     const { stdout } = await execFileAsync('tar', ['-tvzf', archive], { maxBuffer: 16 * 1024 * 1024 });
     const { stdout: names } = await execFileAsync('tar', ['-tzf', archive], { maxBuffer: 16 * 1024 * 1024 });
     for (const line of stdout.split('\n').filter(Boolean)) {
-      if (line[0] === 'l' || line[0] === 'h') throw new Error('Archive contains links, refusing to install');
+      if (line[0] === 'l' || line[0] === 'h') throw new Error(t('appearance.hasLinks'));
     }
     for (const name of names.split('\n').filter(Boolean)) {
-      if (isAbsolute(name) || name.split('/').includes('..')) throw new Error(`Archive contains an unsafe path: ${name}`);
+      if (isAbsolute(name) || name.split('/').includes('..')) throw new Error(t('appearance.unsafePath', { name }));
     }
 
     const out = join(tmp, 'package');
@@ -175,8 +174,8 @@ export async function stageSource(source: Source): Promise<Staged> {
     if (!existsSync(dir) || !statSync(dir).isDirectory()) {
       const official = source.owner === OFFICIAL_OWNER && source.repo === OFFICIAL_REPO && source.path.startsWith(`${OFFICIAL_PATH}/`);
       throw new Error(official
-        ? `There's no skin named "${basename(source.path)}" in ${OFFICIAL_OWNER}/${OFFICIAL_REPO}`
-        : `${describeSource(source)}: that folder doesn't exist in the repo`);
+        ? t('appearance.noOfficialSkin', { name: basename(source.path), repo: `${OFFICIAL_OWNER}/${OFFICIAL_REPO}` })
+        : t('appearance.noFolder', { source: describeSource(source) }));
     }
     return { dir, cleanup };
   } catch (error) {
@@ -215,7 +214,7 @@ export function scanFiles(dir: string): FileScan {
       else if (stat.isDirectory()) walk(full);
       else if (stat.isFile() && isAllowedFile(rel)) files.push(rel);
       else skipped.push(rel);
-      if (files.length > MAX_FILES) throw new Error(`Package has more than ${MAX_FILES} files, refusing to install`);
+      if (files.length > MAX_FILES) throw new Error(t('appearance.tooManyFiles', { max: MAX_FILES }));
     }
   };
   walk(dir);
@@ -228,27 +227,27 @@ export function scanFiles(dir: string): FileScan {
 export function validatePackage(dir: string, files: string[], contract: number): string[] {
   const manifest = MANIFEST;
   const problems: string[] = [];
-  if (!files.includes(manifest)) return [`missing ${manifest}`];
-  if (!files.includes(ENTRY)) problems.push(`missing ${ENTRY}`);
+  if (!files.includes(manifest)) return [t('appearance.missing', { file: manifest })];
+  if (!files.includes(ENTRY)) problems.push(t('appearance.missing', { file: ENTRY }));
 
   let data: unknown;
   try {
     data = JSON.parse(readFileSync(join(dir, manifest), 'utf8'));
   } catch (error) {
-    return [...problems, `${manifest} is not valid JSON: ${(error as Error).message}`];
+    return [...problems, t('appearance.invalidJson', { file: manifest, error: (error as Error).message })];
   }
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return [...problems, `${manifest} should be an object`];
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return [...problems, t('appearance.notObject', { at: manifest })];
   const m = data as Record<string, unknown>;
 
   if (m.contract !== contract) {
-    problems.push(`${manifest} targets appearance contract ${JSON.stringify(m.contract)}, this site uses ${contract}`);
+    problems.push(t('appearance.contract', { file: manifest, target: String(JSON.stringify(m.contract)), site: contract }));
   }
 
   const checkScheme = (scheme: Record<string, unknown>, at: string) => {
-    if (typeof scheme.short !== 'string' || !SHORT_RE.test(scheme.short)) problems.push(`${at}: short should be 1-2 letters or digits`);
-    if (typeof scheme.swatch !== 'string' || !COLOR_RE.test(scheme.swatch)) problems.push(`${at}: swatch should be a hex color or a CSS variable`);
+    if (typeof scheme.short !== 'string' || !SHORT_RE.test(scheme.short)) problems.push(t('appearance.short', { at }));
+    if (typeof scheme.swatch !== 'string' || !COLOR_RE.test(scheme.swatch)) problems.push(t('appearance.swatch', { at }));
     if (scheme.icon !== undefined && (typeof scheme.icon !== 'string' || !COLOR_RE.test(scheme.icon))) {
-      problems.push(`${at}: icon should be a hex color or a CSS variable`);
+      problems.push(t('appearance.icon', { at }));
     }
   };
 
@@ -256,28 +255,28 @@ export function validatePackage(dir: string, files: string[], contract: number):
   const ids: string[] = [];
   const shorts: unknown[] = [];
   if (!Array.isArray(m.schemes) || !m.schemes.length) {
-    problems.push(`${manifest}: schemes needs at least one color scheme; visitors can only pick a skin's own schemes`);
+    problems.push(t('appearance.noSchemes', { file: manifest }));
   } else {
     m.schemes.forEach((raw: unknown, i: number) => {
       const at = `${manifest} schemes[${i}]`;
       if (!raw || typeof raw !== 'object') {
-        problems.push(`${at} should be an object`);
+        problems.push(t('appearance.notObject', { at }));
         return;
       }
       const scheme = raw as Record<string, unknown>;
       if (typeof scheme.id !== 'string' || !NAME_RE.test(scheme.id)) {
-        problems.push(`${at}: id is not a valid name`);
+        problems.push(t('appearance.badId', { at }));
         return;
       }
       checkScheme(scheme, at);
-      if (shorts.includes(scheme.short)) problems.push(`${at}: short "${scheme.short}" is already used by another scheme in this skin`);
+      if (shorts.includes(scheme.short)) problems.push(t('appearance.shortTaken', { at, short: String(scheme.short) }));
       shorts.push(scheme.short);
       ids.push(scheme.id);
-      if (!files.includes(`schemes/${scheme.id}.css`)) problems.push(`missing schemes/${scheme.id}.css`);
+      if (!files.includes(`schemes/${scheme.id}.css`)) problems.push(t('appearance.missing', { file: `schemes/${scheme.id}.css` }));
     });
   }
   if (m.recommendedScheme !== undefined && (typeof m.recommendedScheme !== 'string' || !ids.includes(m.recommendedScheme))) {
-    problems.push(`${manifest}: recommendedScheme should be one of the skin's own schemes${ids.length ? ` (${ids.join(', ')})` : ''}`);
+    problems.push(ids.length ? t('appearance.recommendedAmong', { file: manifest, ids: ids.join(', ') }) : t('appearance.recommended', { file: manifest }));
   }
   return problems;
 }
@@ -318,11 +317,11 @@ export function installFiles(root: string, name: string, fromDir: string, files:
 
 /** skins/<name>, guaranteed to stay inside skins/ */
 export function packageDir(root: string, name: string): string {
-  if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a valid skin name`);
+  if (!NAME_RE.test(name)) throw new Error(t('skin.invalidName', { name }));
   const base = join(root, SKINS_DIR);
   mkdirSync(base, { recursive: true });
   const dir = join(base, name);
-  if (relative(base, dir) !== name) throw new Error(`Refusing to use ${dir}`);
+  if (relative(base, dir) !== name) throw new Error(t('appearance.refuseDir', { dir }));
   return dir;
 }
 

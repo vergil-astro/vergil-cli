@@ -5,11 +5,13 @@
  *
  * None yet: 1.x only makes compatible changes. The first entry comes with the first breaking release.
  */
+import type { MessageKey } from '../utils/i18n.js';
+
 export interface Migration {
   /** The theme version that needs this migration, e.g. '2.0.0' */
   version: string;
-  /** One line shown before running it */
-  description: string;
+  /** One line shown before running it: a key in src/locales/*.json, so it is shown in the user's language */
+  description: MessageKey;
   run(root: string): Promise<void>;
 }
 

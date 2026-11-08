@@ -6,7 +6,8 @@ import { MIGRATIONS } from '../migrations/index.js';
 import { compareBuilds } from '../utils/compare-build.js';
 import { getProjectRoot } from '../utils/file.js';
 import { C } from '../utils/helpers.js';
-import { fail, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 import { allowBuildsBlock, mergeAllowBuilds } from '../utils/pnpm-settings.js';
 import { compareVersions, inRange, parseVersion } from '../utils/semver.js';
 import { detectPackageManager } from './build.js';
@@ -27,18 +28,15 @@ export interface UpgradeOptions {
  */
 export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   if (!pkg.dependencies?.[THEME] && !pkg.devDependencies?.[THEME]) {
-    return fail(
-      'This site carries the theme source itself (Vergil 0.x), not the theme package.',
-      'vg upgrade works on sites that depend on @vergil-astro/theme. Move this site over once by hand, see the upgrade notes in the Vergil docs.',
-    );
+    return fail(t('upgrade.carriesSource'), t('upgrade.carriesSourceHint'));
   }
 
   const installedFile = join(root, 'node_modules', '@vergil-astro', 'theme', 'package.json');
-  if (!existsSync(installedFile)) return fail('The theme package is not installed yet.', 'Install the dependencies first (pnpm install).');
+  if (!existsSync(installedFile)) return fail(t('upgrade.notInstalled'), t('upgrade.notInstalledHint'));
   const current: string = JSON.parse(readFileSync(installedFile, 'utf8')).version;
 
   let target = options.to?.replace(/^v/, '');
@@ -46,12 +44,12 @@ export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
     try {
       target = execFileSync('npm', ['view', THEME, 'version'], { encoding: 'utf8' }).trim();
     } catch {
-      return fail('Could not look up the latest theme version on npm.', 'Check the network, or pass the version: vg upgrade --to <version>.');
+      return fail(t('upgrade.lookupFailed'), t('upgrade.lookupFailedHint'));
     }
   }
-  if (!parseVersion(target)) return fail(`Not a version: ${target}`);
+  if (!parseVersion(target)) return fail(t('upgrade.notVersion', { version: target }));
   if (compareVersions(target, current) <= 0) {
-    console.log(C.success(`✓ The theme is already at ${current}.`));
+    console.log(C.success(t('upgrade.upToDate', { version: current })));
     return;
   }
 
@@ -60,48 +58,48 @@ export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
   const isGit = existsSync(join(root, '.git'));
   const branch = `vergil-upgrade/${target}`;
 
-  console.log(C.subtitle(`Upgrade @vergil-astro/theme ${current} → ${target}`));
-  if (isGit) console.log(C.muted(`  1. Work on a new branch: ${branch}`));
-  if (!options.skipCheck) console.log(C.muted('  2. Build the site as it is now, to compare against'));
-  console.log(C.muted(`  3. Update the package with ${pm}`));
-  if (pm === 'pnpm') console.log(C.muted('       and declare the install scripts the new version brings (allowBuilds in pnpm-workspace.yaml)'));
-  console.log(C.muted(migrations.length ? `  4. Run ${migrations.length} migration(s):` : '  4. No migrations needed between these versions'));
-  for (const m of migrations) console.log(C.muted(`       ${m.version}  ${m.description}`));
-  console.log(C.muted('     Clear Astro\'s content cache, so every page renders with the new theme'));
-  if (!options.skipCheck) console.log(C.muted('  5. Build again and compare every page'));
+  console.log(C.subtitle(t('upgrade.plan', { from: current, to: target })));
+  if (isGit) console.log(C.muted(`  ${t('upgrade.stepBranch', { branch })}`));
+  if (!options.skipCheck) console.log(C.muted(`  ${t('upgrade.stepBuildBefore')}`));
+  console.log(C.muted(`  ${t('upgrade.stepUpdate', { pm })}`));
+  if (pm === 'pnpm') console.log(C.muted(`       ${t('upgrade.stepAllowBuilds')}`));
+  console.log(C.muted(`  ${migrations.length ? t('upgrade.stepMigrations', { count: migrations.length }) : t('upgrade.stepNoMigrations')}`));
+  for (const m of migrations) console.log(C.muted(`       ${m.version}  ${t(m.description)}`));
+  console.log(C.muted(`     ${t('upgrade.stepClearCache')}`));
+  if (!options.skipCheck) console.log(C.muted(`  ${t('upgrade.stepCompare')}`));
   if (options.dryRun) {
-    console.log(C.muted('\n(Dry run: nothing changed. Run without --dry-run to upgrade.)'));
+    console.log(C.muted(`\n${t('upgrade.dryRun')}`));
     return;
   }
 
   if (isGit) {
     const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim();
-    if (dirty) return fail('The site has uncommitted changes.', 'Commit or stash them first, so the upgrade can be undone cleanly.');
+    if (dirty) return fail(t('upgrade.dirty'), t('upgrade.dirtyHint'));
     try {
       execFileSync('git', ['switch', '-c', branch], { cwd: root, stdio: 'ignore' });
     } catch {
-      return fail(`Could not create the branch ${branch}.`, 'It may already exist from an earlier attempt; delete it or switch to it first.');
+      return fail(t('upgrade.branchFailed', { branch }), t('upgrade.branchFailedHint'));
     }
   } else {
-    console.log(C.warning('⚠ Not a git repository: the upgrade cannot be undone automatically.'));
+    console.log(C.warning(t('upgrade.notGit')));
   }
 
   let before: string | null = null;
   try {
     if (!options.skipCheck) {
-      console.log(C.accent('\nBuilding the current site...'));
+      console.log(C.accent(`\n${t('upgrade.buildingCurrent')}`));
       run(pm, ['run', 'build'], root);
       before = mkdtempSync(join(tmpdir(), 'vergil-upgrade-'));
       cpSync(join(root, 'dist'), before, { recursive: true });
     }
 
-    console.log(C.accent(`\nUpdating the theme to ${target}...`));
+    console.log(C.accent(`\n${t('upgrade.updating', { version: target })}`));
     if (pm === 'pnpm') syncAllowBuilds(root, target);
     const spec = `${THEME}@^${target}`;
     run(pm, pm === 'npm' ? ['install', spec] : ['add', spec], root);
 
     for (const m of migrations) {
-      console.log(C.accent(`\nMigration ${m.version}: ${m.description}`));
+      console.log(C.accent(`\n${t('upgrade.migration', { version: m.version, description: t(m.description) })}`));
       await m.run(root);
     }
 
@@ -111,23 +109,23 @@ export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
     rmSync(join(root, 'node_modules', '.astro'), { recursive: true, force: true });
 
     if (before) {
-      console.log(C.accent('\nBuilding the upgraded site...'));
+      console.log(C.accent(`\n${t('upgrade.buildingUpgraded')}`));
       run(pm, ['run', 'build'], root);
       const diff = compareBuilds(before, join(root, 'dist'));
       const same = diff.total - diff.changed.length - diff.missing.length;
-      console.log(C.subtitle(`\nPages: ${same} of ${diff.total} unchanged`));
-      for (const p of diff.changed.slice(0, 20)) console.log(C.muted(`  changed  ${p}`));
-      for (const p of diff.missing.slice(0, 20)) console.log(C.muted(`  gone     ${p}`));
-      for (const p of diff.added.slice(0, 20)) console.log(C.muted(`  new      ${p}`));
+      console.log(C.subtitle(`\n${t('upgrade.pagesSame', { same, total: diff.total })}`));
+      for (const page of diff.changed.slice(0, 20)) console.log(C.muted(`  ${t('upgrade.pageChanged', { page })}`));
+      for (const page of diff.missing.slice(0, 20)) console.log(C.muted(`  ${t('upgrade.pageGone', { page })}`));
+      for (const page of diff.added.slice(0, 20)) console.log(C.muted(`  ${t('upgrade.pageNew', { page })}`));
       if (diff.changed.length || diff.missing.length) {
-        console.log(C.muted('  Changed pages usually come from what the release notes describe; have a look at them before committing.'));
+        console.log(C.muted(`  ${t('upgrade.changedNote')}`));
       }
     }
 
-    console.log(C.success(`\n✓ Upgraded to ${target}.`));
-    if (isGit) console.log(C.muted(`  Review and commit on ${branch}; to undo, run: git switch - && git branch -D ${branch}`));
+    console.log(C.success(`\n${t('upgrade.done', { version: target })}`));
+    if (isGit) console.log(C.muted(`  ${t('upgrade.reviewHint', { branch })}`));
   } catch (e) {
-    fail(`Upgrade stopped: ${e instanceof Error ? e.message : String(e)}`, isGit ? `Undo with: git checkout . && git switch - && git branch -D ${branch}` : 'Restore package.json and the lockfile from your backup.');
+    fail(t('upgrade.stopped', { error: e instanceof Error ? e.message : String(e) }), isGit ? t('upgrade.undoGit', { branch }) : t('upgrade.undoNoGit'));
   } finally {
     if (before) rmSync(before, { recursive: true, force: true });
   }
@@ -140,14 +138,14 @@ export async function upgradeCommand(options: UpgradeOptions): Promise<void> {
 function syncAllowBuilds(root: string, version: string): void {
   const block = publishedAllowBuilds(version);
   if (!block) {
-    console.log(C.muted('  (Could not read the install-script declarations of the new version; if pnpm stops on ignored builds, declare them in pnpm-workspace.yaml.)'));
+    console.log(C.muted(`  ${t('upgrade.allowBuildsUnknown')}`));
     return;
   }
   const file = join(root, 'pnpm-workspace.yaml');
   const { yaml, added } = mergeAllowBuilds(existsSync(file) ? readFileSync(file, 'utf8') : null, block);
   if (!added.length) return;
   writeFileSync(file, yaml);
-  console.log(C.muted(`  Declared install scripts in pnpm-workspace.yaml: ${added.join(', ')}`));
+  console.log(C.muted(`  ${t('upgrade.allowBuildsAdded', { list: added.join(', ') })}`));
 }
 
 /** The allowBuilds block in the pnpm-workspace.yaml that a published theme version carries */

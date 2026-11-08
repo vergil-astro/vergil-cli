@@ -4,7 +4,8 @@ import matter from 'gray-matter';
 import { C, link } from '../utils/helpers.js';
 import { getProjectRoot, listMarkdownFiles } from '../utils/file.js';
 import { loadSeriesDefs, findSeriesDef, resolvePostSeries } from '../utils/series.js';
-import { fail, printJson, sitePath, NOT_IN_SITE_HINT } from '../utils/output.js';
+import { fail, failNotInSite, printJson, sitePath } from '../utils/output.js';
+import { t } from '../utils/i18n.js';
 import type { JsonOptions } from '../types.js';
 
 interface SeriesInfo {
@@ -62,7 +63,7 @@ const dateOrNull = (ms: number): string | null => (ms ? new Date(ms).toISOString
 
 export async function seriesListCommand(options: JsonOptions = {}): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const seriesMap = collectSeries(root);
 
@@ -80,12 +81,12 @@ export async function seriesListCommand(options: JsonOptions = {}): Promise<void
   }
 
   if (seriesMap.size === 0) {
-    console.log(C.muted('No series found. Use --series when creating a post.'));
-    console.log(C.muted('  vg new post "Title" --series "My Series"'));
+    console.log(C.muted(t('series.none')));
+    console.log(C.muted(`  ${t('series.noneExample')}`));
     return;
   }
 
-  console.log(C.accent('\nSeries\n'));
+  console.log(C.accent(`\n${t('series.title')}\n`));
   console.log(C.dim('─'.repeat(50)));
 
   const sorted = Array.from(seriesMap.values()).sort((a, b) =>
@@ -94,15 +95,16 @@ export async function seriesListCommand(options: JsonOptions = {}): Promise<void
 
   for (const s of sorted) {
     const draftCount = s.posts.filter(p => p.draft).length;
-    const draftLabel = draftCount > 0 ? C.warning(` (${draftCount} draft)`) : '';
+    const draftLabel = draftCount > 0 ? C.warning(` ${t('common.drafts', { count: draftCount })}`) : '';
     const dirLabel = s.dir ? C.muted(`  blog/${s.dir}/`) : '';
-    console.log(`  ${C.accent(s.name.padEnd(20))} ${C.text(String(s.posts.length))} posts${draftLabel}${dirLabel}`);
+    const posts = t('series.postsUnit', { count: s.posts.length });
+    console.log(`  ${C.accent(s.name.padEnd(20))} ${C.text(String(s.posts.length))} ${posts}${draftLabel}${dirLabel}`);
   }
 }
 
 export async function seriesShowCommand(seriesName: string, options: JsonOptions = {}): Promise<void> {
   const root = getProjectRoot();
-  if (!root) return fail('Not in a Vergil project.', NOT_IN_SITE_HINT);
+  if (!root) return failNotInSite();
 
   const seriesMap = collectSeries(root);
   const match = findSeriesDef(Array.from(seriesMap.values()), seriesName);
@@ -110,7 +112,7 @@ export async function seriesShowCommand(seriesName: string, options: JsonOptions
 
   if (!series) {
     const available = Array.from(seriesMap.values()).map(s => s.name);
-    return fail(`Series not found: ${seriesName}`, ...(available.length > 0 ? [`Available: ${available.join(', ')}`] : []));
+    return fail(t('series.notFound', { name: seriesName }), ...(available.length > 0 ? [t('common.available', { list: available.join(', ') })] : []));
   }
 
   if (options.json) {
@@ -126,7 +128,7 @@ export async function seriesShowCommand(seriesName: string, options: JsonOptions
   console.log(C.dim('─'.repeat(50)));
 
   for (const post of series.posts) {
-    const draft = post.draft ? C.warning(' [draft]') : '';
+    const draft = post.draft ? C.warning(` ${t('common.draftTag')}`) : '';
     console.log(`  ${C.accent('▸')} ${link(C.text(post.title), post.absPath)}${draft}`);
     console.log(`    ${C.muted(post.path)}`);
   }
